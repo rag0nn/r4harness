@@ -1,0 +1,22 @@
+# This file also protects the project when r4agent/ is used as a repository root.
+.env
+.env.*
+!.env.example
+!r4agent/example.env
+
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.py[cod]
+
+application/cli/chats/
+r4agent/rag/db/
+
+*.log
+*.tmp
+*.onnx
+*.safetensors
+*.pt
+*.pth
+*.bin

@@ -1,0 +1,10 @@
+- ~~farklı file parser'ları ekle rag için md vs...~~
+- ~~farklı model class'ları ekle, Cosmos, needle, gemni gibi~~
+- ~~cosmos embedi ekle~~
+- ~~voice-text modeli ekle~~
+- ~~backend eklenecek~~
+- ~~backend client eklenecek~~
+- ~~toolları düzelt biraz daha~~
+- ~~chat application [farklı model kombinasyon seçenekleri, farklı system prompt seçenekleri, backend chat save]~~
+- packet optional .toml handles
+- detaylı konfigürasyon ayarları ve yönetimi

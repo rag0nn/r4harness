@@ -1,0 +1,202 @@
+
+Header { 
+    color: purple;
+}
+
+#init-loader {
+    margin: 2 4;
+    color: #8ef7b7;
+}
+
+#init-status {
+    margin: 0 4;
+}
+
+#model-banner {
+    width: 100%;
+    height: auto;
+    min-height: 1;
+    color: #8ef7b7;
+    background: #07120d;
+    border-bottom: solid #1d4d37;
+    text-style: bold;
+    overflow: hidden;
+    padding: 0 1;
+    text-align: left;
+    content-align: left middle;
+}
+
+#loading-screen {
+    height: 1fr;
+    align: center middle;
+    color: #8ef7b7;
+}
+
+#chat-screen {
+    display: none;
+    height: 1fr;
+}
+
+#view-switcher {
+    display: none;
+    height: 3;
+    layout: horizontal;
+    margin: 0 2;
+}
+
+#chat-view-button,
+#logs-view-button {
+    width: 10;
+    height: 3;
+    margin-right: 1;
+    background: #8ef7b7;
+
+}
+
+#logs-screen {
+    display: none;
+    height: 1fr;
+    margin: 0 2;
+    border: round #355b49;
+}
+
+#farewell-screen {
+    display: none;
+    height: 1fr;
+    align: center middle;
+}
+
+#farewell-face {
+    text-style: bold;
+    color: green;
+}
+
+#selected-files {
+    display: none;
+    width: 100%;
+    height: auto;
+    max-height: 4;
+    padding: 0 1;
+    color: #8ef7b7;
+    overflow: hidden;
+}
+
+#chat-log {
+    height: 1fr;
+    padding: 1 2;
+}
+
+#logs-title {
+    height: 1;
+    padding: 0 1;
+    color: #8ef7b7;
+    text-style: bold;
+}
+
+#logs-view {
+    height: 1fr;
+    padding: 0 1;
+}
+
+.log-line {
+    height: auto;
+    color: #9aaea3;
+}
+
+#prompt-area {
+    width: 1fr;
+    height: 5;
+    border: round #8ef7b7;
+}
+
+#prompt-area:focus {
+    border: round #8ef7b7;
+}
+
+#prompt-row {
+    height: 5;
+    layout: horizontal;
+    margin: 0 2;
+}
+
+#record-button {
+    width: 6;
+    height: 5;
+    margin-left: 1;
+    border: round #8ef7b7;
+    color: #8ef7b7;
+}
+
+#record-button:hover {
+    background: #173d2b;
+}
+
+#query-status {
+    display: none;
+    width: auto;
+    height: 1;
+    margin: 0 2;
+    color: #8ef7b7;
+}
+
+#command-list {
+    display: none;
+    height: auto;
+    max-height: 6;
+    margin: 0 2;
+    border: round cyan;
+}
+
+.message-block {
+    width: 80%;
+    height: auto;
+    min-height: 4;
+    margin: 1 0;
+    padding: 1 2;
+    border: round $primary;
+    background: $surface;
+}
+
+.message-block.user {
+    margin-left: 10;
+    border: round #8ef7b7;
+}
+
+.message-block.assistant {
+    border: round #20d9e8;
+}
+
+.message-block.system {
+    width: 100%;
+    border: round grey;
+    color: grey;
+}
+
+.message-block.tool {
+    width: 90%;
+    border: round yellow;
+}
+
+.tool-chain {
+    width: 100%;
+    height: auto;
+    margin: 1 0;
+    padding-left: 1;
+    border-left: solid yellow;
+}
+
+.tool-chain .message-block {
+    margin-top: 0;
+    margin-bottom: 1;
+}
+
+.message-role {
+    text-style: bold;
+    color: grey;
+}
+
+.message-content {
+    height: auto;
+    min-height: 1;
+    margin-top: 1;
+}
