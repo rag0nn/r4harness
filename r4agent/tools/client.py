@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import concurrent.futures
+import os
 import sys
 import threading
 from pathlib import Path
@@ -15,23 +16,27 @@ class MCPClient:
     _lock = threading.Lock()
 
     SERVER_ROOT = Path(__file__).resolve().parents[2]
-    SERVER_PARAMS = StdioServerParameters(
-        command=sys.executable,
-        args=["-m", "r4agent.tools.server", "--transport", "stdio"],
-        cwd=str(SERVER_ROOT),
-    )
 
-    def __new__(cls) -> "MCPClient":
+    def __new__(cls, *args, **kwargs) -> "MCPClient":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, embed_model: str = "cosmos"):
         if hasattr(self, "_initialized"):
             return
         self._initialized = True
+
+        env = os.environ.copy()
+        env["R4AGENT_EMBED_MODEL"] = embed_model
+        self.SERVER_PARAMS = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", "r4agent.tools.server", "--transport", "stdio"],
+            env=env,
+            cwd=str(self.SERVER_ROOT),
+        )
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
             target=self._run_loop,
@@ -94,7 +99,7 @@ class MCPClient:
     async def _wait_worker(self):
         await self._worker_done
 
-    def _run(self, coroutine):
+    def _run(self, coroutine, timeout: float = 30.0):
         """Senkron çağrıyı MCP thread'ine aktarır ve sonucunu bekler."""
         if self._closed:
             raise RuntimeError("MCPClient zaten kapatıldı")
@@ -102,7 +107,7 @@ class MCPClient:
         asyncio.run_coroutine_threadsafe(
             self._enqueue(coroutine, result), self._loop
         ).result()
-        return result.result()
+        return result.result(timeout=timeout)
 
     def close(self):
         """MCP worker'ını kontrollü biçimde durdurup kaynaklarını serbest bırakır."""
@@ -125,8 +130,12 @@ class MCPClient:
         """Bir MCP tool çağrısını çalıştırır ve metin sonucuna dönüştürür."""
         result = self._run(self._session.call_tool(name, arguments=params or {}))
         if result.is_error:
-            print("Tool hatası:", result.content, file=sys.stderr)
-            return "Tool Hatası, veri bulunamadı"
+            error_text = "\n".join(
+                getattr(block, "text", str(block)) if not isinstance(block, str) else block
+                for block in result.content
+            )
+            logging.error(f"Tool hatası [{name}]: {error_text}")
+            return f"Tool Hatası ({name}): {error_text}"
         text_parts = [
             getattr(block, "text", str(block)) if not isinstance(block, str) else block
             for block in result.content

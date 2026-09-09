@@ -24,7 +24,13 @@ class Message:
     tool_calls: list | None = None
 
     def to_dict(self):
-        return {k: v for k, v in asdict(self).items() if v is not None}
+        result = {k: v for k, v in asdict(self).items() if v is not None}
+        if result.get("tool_calls"):
+            result["tool_calls"] = [
+                tc.model_dump() if hasattr(tc, "model_dump") else tc
+                for tc in result["tool_calls"]
+            ]
+        return result
     
     def __repr__(self):
         return f"role: {self.role} content: {self.content} tool_calls: {self.tool_calls}"

@@ -12,9 +12,10 @@ __pycache__/
 
 application/cli/chats/
 r4agent/rag/db/
+/r4agent/application/cli/chats/*
 
 todo.md
-
+*temp.py
 *.log
 *.tmp
 *.onnx

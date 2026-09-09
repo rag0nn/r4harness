@@ -18,7 +18,7 @@ from .session_controller import SessionController
 from .widgets import ModelBanner, PromptTextArea
 from r4agent import R4Agent, Message
 from r4agent.struct.base import Roles
-import r4agent.providers as provs
+from r4agent.providers import ProviderManager, RegisterySet, ModelRegistery
 
 class R4TUI(App):
     CSS_PATH = "styles.tcss"
@@ -27,8 +27,10 @@ class R4TUI(App):
         Binding("ctrl+b", "cancel_query", show=True, priority=True),
     ]
     
-    def __init__(self):
+    def __init__(self, provider: ProviderManager, stream: bool = True):
         self.handler: Handler | None = None
+        self.provider = provider
+        self.stream = stream
         self._banner_offset = 0
         self._query_waiting = False
         self._query_status_offset = 0
@@ -43,10 +45,11 @@ class R4TUI(App):
         super().__init__()
 
     def _build_model_banner_text(self) -> str:
-        context = provs.registery.context_key
-        tool = provs.registery.toolgen_key
-        embed = provs.registery.embed_key
-        base = f"CG: {context}   TG: {tool}   EG: {embed}"
+        context = self.provider.registery_set.context_model
+        tool = self.provider.registery_set.toolgen_model
+        embed = self.provider.registery_set.embed_model
+        whisper = self.provider.registery_set.whisper_model
+        base = f"CG: {context}   TG: {tool}   EG: {embed}    W: {whisper}"
         repeat = base + "   " + base + "   " + base
         window = 60
         start = self._banner_offset % len(base)
@@ -173,7 +176,7 @@ class R4TUI(App):
             button.disabled = True
             self.query_one("#query-status", Label).display = True
             self.run_worker(
-                lambda: provs.WHISPER.start_recording(),
+                lambda: self.handler.r4.provider.whisper.start_recording(),
                 name="voice-start",
                 exclusive=True,
                 thread=True,
@@ -185,7 +188,7 @@ class R4TUI(App):
         button.disabled = True
         self.query_one("#query-status", Label).update("Ses işleniyor")
         self._voice_worker = self.run_worker(
-            lambda: provs.WHISPER.stop_recording(),
+            lambda: self.handler.r4.provider.whisper.stop_recording(),
             name="voice-stop",
             exclusive=True,
             thread=True,
@@ -193,7 +196,7 @@ class R4TUI(App):
         )
 
     def _initialize_agent(self) -> Handler:
-        return Handler(R4Agent())
+        return Handler(R4Agent(self.provider, self.stream))
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         """Finalize each worker only in its owning UI state transition."""
@@ -584,9 +587,9 @@ class R4TUI(App):
     def show_change_list(self, query: str = "") -> None:
         """Build model-field or model-key suggestions for the change command."""
         fields = {
-            "context_model": provs.registery.context_models,
-            "embed_model": provs.registery.embed_models,
-            "toolgen_model": provs.registery.toolgen_models,
+            "context_model": ModelRegistery.context_models,
+            "embed_model":  ModelRegistery.embed_models,
+            "toolgen_model": ModelRegistery.toolgen_models,
         }
         command_list = self.query_one("#command-list", OptionList)
         parts = query.split()
@@ -671,9 +674,9 @@ class R4TUI(App):
 
         field, key = parts
         fields = {
-            "context_model": provs.registery.set_context_model,
-            "embed_model": provs.registery.set_embed_model,
-            "toolgen_model": provs.registery.set_toolgen_model,
+            "context_model": self.handler.r4.provider.change_context_model,
+            "embed_model": self.handler.r4.provider.change_embed_model,
+            "toolgen_model": self.handler.r4.provider.change_tool_model,
         }
         setter = fields.get(field)
         if setter is None:
@@ -689,7 +692,6 @@ class R4TUI(App):
 
         def rebuild() -> None:
             setter(key)
-            self.handler.r4.rebuild()
 
         self.run_worker(
             rebuild,
@@ -728,4 +730,7 @@ class R4TUI(App):
 
     
 if __name__ == "__main__":
-    R4TUI().run()
+    registery_set = RegisterySet()
+    provider = ProviderManager(registery_set)
+    stream = True
+    R4TUI(provider, stream).run()

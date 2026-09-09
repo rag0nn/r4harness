@@ -1,6 +1,6 @@
 from .struct import *
 from .tools.client import MCPClient
-from . import providers
+from .providers import ProviderManager, RegisterySet
 from .utils import log_execution_time
 
 from typing import Generator
@@ -11,31 +11,21 @@ class R4Agent:
     MAX_TOOL_ROUNDS = 5
 
     def __init__(self,
-            stream : bool = False):
+            provider: ProviderManager | None = None,
+            stream : bool = False,
+            ):
         self.stream = stream
+        self.provider = provider or ProviderManager()
         self._build()
         
     @log_execution_time
     def _build(self):
-        self.mcp_client = MCPClient()
-        
-        system_prompt = providers.SYSTEM_PROMPT
-        self.generation_model = providers.CONTEXT_GEN_MODEL
-        self.tool_generation_model = providers.TOOL_GEN_MODEL
-        self.embed_generation_model = providers.EMBED_GEN_MODEL
-        logging.info(f"System Prompt: {system_prompt}")
-        logging.info(f"Context Model: {self.generation_model.__class__.__name__}")
-        logging.info(f"Tool Selection Model: {self.tool_generation_model.__class__.__name__}")
-        logging.info(f"Embedding Model: {self.embed_generation_model.__class__.__name__}")
+        self.mcp_client = MCPClient(embed_model=self.provider.registery_set.embed_model)
         self.message_sequnce = MessageSequence(
-            initial_system_prompt=system_prompt + f" MCP Server Instructions: {self.mcp_client.get_insturactions()}")
-
+            initial_system_prompt=self.provider.system_prompt+ f" MCP Server Instructions: {self.mcp_client.get_insturactions()}")
+        self.provider.context_model
+        self.provider.tool_model
         logging.info("R4Agent başlatıldı.")
-
-    def rebuild(self):
-        """Recreate this agent with the providers currently selected in the registry."""
-        providers.rebuild()
-        self._build()
 
     def _call_tools_mcp(self, tool_calls: list) -> None:
         """Modelin seçtiği MCP araçlarını sırayla çalıştırıp sonuçlarını geçmişe ekler."""
@@ -58,7 +48,7 @@ class R4Agent:
     def _run_tool_loop(self) -> None:
         """Araç seçimini sınırlı turda tekrarlar ve sonsuz tool döngüsünü engeller."""
         for round_number in range(self.MAX_TOOL_ROUNDS):
-            tool_calls_model, tool_calls_mcp = self.tool_generation_model.send(
+            tool_calls_model, tool_calls_mcp = self.provider.tool_model.send(
                 self.message_sequnce,
                 self.mcp_client.get_tools(),
             )
@@ -86,7 +76,7 @@ class R4Agent:
         self._run_tool_loop()
         
         full_content, full_thinking = "", ""
-        for cnt, tnk in self.generation_model.send(
+        for cnt, tnk in self.provider.context_model.send(
                 self.message_sequnce,
                 stream=self.stream):
             full_content += cnt

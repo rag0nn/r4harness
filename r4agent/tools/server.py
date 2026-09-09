@@ -36,8 +36,14 @@ mcp = MCPServer(
         "vb. özel nitelikli işlemleri yapan tooları içerir."
     ),
     description=None, # insan kullanıcıları bilgilendirici metin.
-    
+
 )
+
+import os as _os
+from ..providers import ProviderManager as _ProviderManager, RegisterySet as _RegisterySet
+
+_embed_model = _os.environ.get("R4AGENT_EMBED_MODEL", "cosmos")
+_provider = _ProviderManager(_RegisterySet(embed_model=_embed_model))
 @mcp.tool()
 async def get_time() -> str:
     """Mevcut şuanki zamanı döndürür.
@@ -120,13 +126,14 @@ async def local_contents(query: str) -> str:
     Returns:
         Bulunan belgelerden oluşturulmuş metin çıktısı.
     """
-    from .. import providers
-
-    elems = providers.DBCLIENT.query(content=query)
-    text = ""
-    for elem in elems:
-        text += f"document: {elem.document} content: {elem.content}"
-    return text
+    try:
+        elems = _provider.dbclient.query(content=query)
+        text = ""
+        for elem in elems:
+            text += f"document: {elem.document} content: {elem.content}"
+        return text
+    except Exception as e:
+        return f"local_contents hatası: {type(e).__name__}: {e}"
 
 @mcp.tool()
 async def read_code(paths: list[str]) -> str:

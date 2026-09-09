@@ -1,5 +1,5 @@
 from typing import TYPE_CHECKING
-from .rag.client import DbClient, DocumentHandler
+from .rag.client import RAGClient, DocumentHandler
 from .rag.config import *
 from .struct.model_configs import *
 from .struct import MessageSequence, Message
@@ -14,7 +14,7 @@ def __getattr__(name):
 	raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
-	"DbClient",
+	"RAGClient",
 	"DocumentHandler",
 	"R4Agent",
 ]

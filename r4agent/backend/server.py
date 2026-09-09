@@ -38,7 +38,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     @app.get(urlmap.root)
     async def root() -> RootResponse:
         return RootResponse(
@@ -85,7 +85,7 @@ def create_app() -> FastAPI:
 
                 full_content, full_thinking = await asyncio.to_thread(collect_response)
                 return QueryResponse(content=full_content, thinking=full_thinking, result=True)
-            
+
             except Exception as e:
                 return QueryResponse(
                     content="",
@@ -96,15 +96,14 @@ def create_app() -> FastAPI:
                         message= str(e)
                     )
                 )
-                
-            
+
+
     @app.post(urlmap.rag_add)
-    async def rag_add_content(request: RagAddContentRequest) -> RagAddContentResponse:  
+    async def rag_add_content(request: RagAddContentRequest) -> RagAddContentResponse:
         """Metni embedding'leyip RAG koleksiyonuna ekler."""
-        try:    
+        try:
             def add_content() -> None:
-                import r4agent.providers as pv
-                pv.DBCLIENT.add_content(request.content, request.document)
+                app.state.r4.provider.dbclient.add_content(request.content, request.document)
 
             await asyncio.to_thread(add_content)
             return RagAddContentResponse(
@@ -118,14 +117,13 @@ def create_app() -> FastAPI:
                     message=str(e)
                 )
             )
-        
+
     @app.get(urlmap.rag_list)
     async def rag_list_elements() -> RagListContentsResponse:
         """RAG koleksiyonundaki kayıt özetlerini döndürür."""
-        try:    
+        try:
             def list_elements():
-                import r4agent.providers as pv
-                return pv.DBCLIENT.list_elements()
+                return app.state.r4.provider.dbclient.list_elements()
 
             elems = await asyncio.to_thread(list_elements)
             return RagListContentsResponse(
@@ -140,14 +138,13 @@ def create_app() -> FastAPI:
                     message= str(e)
                 )
             )
-        
+
     @app.delete(urlmap.rag_remove)
     async def rag_remove_elements(request: RagRemoveContentRequest) -> RagRemoveContentResponse:
         """Belge başlığına göre RAG kayıtlarını siler."""
         try:
             def remove_elements() -> None:
-                import r4agent.providers as pv
-                pv.DBCLIENT.remove_elements(document=request.document)
+                app.state.r4.provider.dbclient.remove_elements(document=request.document)
 
             await asyncio.to_thread(remove_elements)
             return RagRemoveContentResponse(
@@ -167,13 +164,12 @@ def create_app() -> FastAPI:
         """Provider seçimini günceller ve agent kaynaklarını yeniden kurar."""
         try:
             def rebuild() -> None:
-                import r4agent.providers as pv
-                pv.configure(
-                    context_model=request.context_model,
-                    embed_model=request.embed_model,
-                    toolgen_model=request.toolgen_model,
-                )
-                app.state.r4.rebuild()
+                if request.context_model is not None:
+                    app.state.r4.provider.change_context_model(request.context_model)
+                if request.embed_model is not None:
+                    app.state.r4.provider.change_embed_model(request.embed_model)
+                if request.toolgen_model is not None:
+                    app.state.r4.provider.change_tool_model(request.toolgen_model)
 
             await asyncio.to_thread(rebuild)
             return ProviderRebuildResponse(result=True)
@@ -185,7 +181,7 @@ def create_app() -> FastAPI:
                     message=str(e),
                 ),
             )
-    
+
     return app
 
 

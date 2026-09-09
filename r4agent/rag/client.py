@@ -79,7 +79,7 @@ class DocumentHandler:
         logging.info(f"Dosya yazıldı: {path}")
 
 # == Client ==========================
-class DbClient:
+class RAGClient:
     
     def __init__(self, database: QDrantDatabase, chunker: Chunker, embed_model: BaseEmbeddingGenerationModel):
         self.database = database

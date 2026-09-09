@@ -6,5 +6,16 @@
 - ~~backend client eklenecek~~
 - ~~toolları düzelt biraz daha~~
 - ~~chat application [farklı model kombinasyon seçenekleri, farklı system prompt seçenekleri, backend chat save]~~
-- packet optional .toml handles
-- detaylı konfigürasyon ayarları ve yönetimi
+- ~~packet optional .toml handles~~
+- ~~detaylı konfigürasyon ayarları ve yönetimi~~
+- ~~tui'yi yeni yapı konfigürasyon ve runtime provider change için güncelle # rebuild~~
+- tui.py' yi biraz daha ayır.
+- komutları türkçe ve tree şeklinde yapalım
+- mcp refactoring?
+- initialization için birkaç farklı örnek registerySet
+- token/sn gibi metriklerin eklenmesi
+- detaylı test
+- testler yaz
+- örnekler güncelle
+- system prompt kaydetme, listeleme, seçme
+- rag için tui'den doküman ekleme
