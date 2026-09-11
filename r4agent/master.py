@@ -17,6 +17,11 @@ class R4Agent:
         self.provider = provider or ProviderManager(RegisterySet())
         self._build()
         
+    def change_provider_manager(self, provider: ProviderManager):
+        self.provider = provider
+        logging.info("R4Agent providerları yenileniyor...")
+        self._build()
+        
     @log_execution_time
     def _build(self):
         self.mcp_client = MCPClient(embed_model=self.provider.registery_set.embed_model)
@@ -24,6 +29,7 @@ class R4Agent:
             initial_system_prompt=self.provider.system_prompt+ f" MCP Server Instructions: {self.mcp_client.get_insturactions()}")
         self.provider.context_model
         self.provider.tool_model
+        logging.info(f"System prompt: {self.provider.system_prompt}")
         logging.info("R4Agent başlatıldı.")
 
     def _call_tools_mcp(self, tool_calls: list) -> None:

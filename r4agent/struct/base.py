@@ -93,9 +93,6 @@ class MessageSequence:
             Message(role=m["role"], content=m["content"], tool_calls=m.get("tool_calls"))
             for m in data
         ]
-        if self.sequence and self.sequence[0].role == Roles.system:
-            self.initial_system_prompt = self.sequence[0].content
-
         logging.info(f"Mesaj kuyruğu {path} konumundan yüklendi")
         return self
     

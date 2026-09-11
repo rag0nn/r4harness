@@ -12,6 +12,8 @@ from r4agent import Message, R4Agent
 from r4agent.providers import ModelRegistery, ProviderManager, UsageRegisteryLoader
 from r4agent.struct.base import Roles
 
+import os
+
 from .command_parser import CommandParser
 from .handler import Handler
 from .log_controller import LogController
@@ -98,10 +100,13 @@ class R4TUI(App):
         Binding("ctrl+b", "cancel_query", show=True, priority=True),
     ]
 
-    def __init__(self, provider: ProviderManager, stream: bool = True, prompts: dict = None):
+    def __init__(self):
+        registery_sets, prompts = UsageRegisteryLoader.load()
+        self.usage_registery_sets = registery_sets
+        self.usage_prompts = prompts
+        self.usage_chosen_registery_set = "coder"
+        self.stream = True
         self.handler: Handler | None = None
-        self.provider = provider
-        self.stream = stream
         self._banner_offset = 0
         self._query_waiting = False
         self._query_status_offset = 0
@@ -114,6 +119,8 @@ class R4TUI(App):
         self.session_controller: SessionController | None = None
         self._active_view = "chat"
         self.prompts = prompts
+        
+        self.current_screen_idx = 0
 
         # Çok Aşamalı Komut Ağacı (COMMAND TREE)
         self.command_tree: dict[str, CommandNode] = {
@@ -137,6 +144,22 @@ class R4TUI(App):
             "/select": {
                 "arg_provider": lambda app, args: app._get_select_suggestions(args[0] if args else ""),
                 "handler": lambda app, args: app._handle_select_command(" ".join(args)),
+            },
+            "/rag" : {
+                "subcommands" : {
+                    "add_document": {
+                        "arg_provider": lambda app, args: app._get_rag_add_documents_suggestions(args[0] if args else ""),
+                        "handler": lambda app,args: app._handle_rag_add_documents_command(" ".join(args))
+                    }
+                }
+            },
+            "/prompt" : {
+                "arg_provider": lambda app, args: app._get_prompt_suggestions(args),
+                "handler": lambda app, args: app._handle_prompt_command(" ".join(args)),
+            },
+            "/providerset" : {
+                "arg_provider" : lambda app, args: app._get_providerset_suggestions(args),
+                "handler" : lambda app, args : app._handle_providerset_command(" ".join(args)),   
             },
             "/change": {
                 # 2 Aşamalı & 3 Aşamalı Hibrit Yapı
@@ -188,10 +211,12 @@ class R4TUI(App):
         super().__init__()
 
     def _build_model_banner_text(self) -> str:
-        context = self.provider.registery_set.context_model
-        tool = self.provider.registery_set.toolgen_model
-        embed = self.provider.registery_set.embed_model
-        whisper = self.provider.registery_set.whisper_model
+        if self.handler is None:
+            return "CG: Yükleniyor... TG: Yükleniyor... EG: Yükleniyor..."
+        context = self.handler.r4.provider.registery_set.context_model
+        tool = self.handler.r4.provider.registery_set.toolgen_model
+        embed = self.handler.r4.provider.registery_set.embed_model
+        whisper = self.handler.r4.provider.registery_set.whisper_model
         base = f"CG: {context}   TG: {tool}   EG: {embed}    W: {whisper}"
         repeat = base + "   " + base + "   " + base
         window = 80
@@ -259,9 +284,6 @@ class R4TUI(App):
         self.chat_log = self.query_one("#chat-log", VerticalScroll)
 
         self.log_controller.capture()
-        self.call_after_refresh(self._update_model_banner)
-        self.set_interval(0.22, self._update_model_banner)
-        self.set_interval(0.18, self._update_query_status)
         self.run_worker(
             self._initialize_agent,
             name="agent-init",
@@ -269,6 +291,8 @@ class R4TUI(App):
             thread=True,
             exit_on_error=False,
         )
+        self.set_interval(0.22, self._update_model_banner)
+        self.set_interval(0.18, self._update_query_status)
 
     def append_log(self, message: str) -> None:
         self.log_controller.append(message)
@@ -283,6 +307,7 @@ class R4TUI(App):
         self.logs_screen.display = False
         self.chat_view_button.variant = "primary"
         self.logs_view_button.variant = "default"
+        self.current_screen_idx = 0
 
     @on(Button.Pressed, "#logs-view-button")
     def show_logs_view(self) -> None:
@@ -292,6 +317,7 @@ class R4TUI(App):
         self.logs_screen.display = True
         self.chat_view_button.variant = "default"
         self.logs_view_button.variant = "primary"
+        self.current_screen_idx = 1
 
     def on_unmount(self) -> None:
         self.log_controller.restore()
@@ -341,7 +367,11 @@ class R4TUI(App):
         )
 
     def _initialize_agent(self) -> Handler:
-        return Handler(R4Agent(self.provider, self.stream))
+        return Handler(
+            R4Agent(
+                ProviderManager(
+                    self.usage_registery_sets[self.usage_chosen_registery_set]), 
+                self.stream))
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.name == "agent-init":
@@ -354,7 +384,7 @@ class R4TUI(App):
                 self.chat_view_button.disabled = False
                 self.logs_view_button.disabled = False
                 self.view_switcher.display = True
-                self._update_model_banner()
+                self.call_after_refresh(self._update_model_banner)
                 self.loading_screen.display = False
                 self.chat_screen.display = True
                 self.update_log()
@@ -405,7 +435,20 @@ class R4TUI(App):
                 button.disabled = False
                 self._finish_voice_processing("Ses kaydı iptal edildi")
             return
+        
+        if event.worker.name == "rag-add-document":
+            if event.state not in (WorkerState.SUCCESS, WorkerState.CANCELLED, WorkerState.ERROR):
+                return
+            self.prompt_area.disabled = False
+            if event.state is WorkerState.SUCCESS:
+                self._update_model_banner()
+                self.query_status_label.update("Döküman başarıyla eklendi")
+            elif event.state is WorkerState.ERROR:
+                self.query_status_label.update(f"Döküman eklerken hata: {event.worker.error}")
+            self.query_status_label.display = True
+            return
 
+            
         if event.worker.name == "voice-stop":
             if event.state not in (WorkerState.SUCCESS, WorkerState.CANCELLED, WorkerState.ERROR):
                 return
@@ -477,7 +520,7 @@ class R4TUI(App):
         full_prompt = prompt.strip()
         if full_prompt.startswith("/"):
             if self.command_runner.execute(full_prompt):
-                self.prompt_area.clear()
+                # self.prompt_area.clear()
                 self.hide_command_list()
                 return
 
@@ -620,11 +663,49 @@ class R4TUI(App):
             elif path.is_file() and path.suffix:
                 options.append(f"/select {relative}")
         return options
-
+    
     def _handle_select_command(self, path_text: str) -> None:
         if self.select_path(path_text):
             self.prompt_area.clear()
             self.hide_command_list()
+            
+    def _get_rag_add_documents_suggestions(self, query: str = "") -> list[str]:
+        root = Path.cwd().resolve()
+        query = query.strip()
+        requested = (root / query).resolve() if query else root
+
+        if requested.is_dir():
+            parent = requested
+            prefix = ""
+        else:
+            parent = requested.parent
+            prefix = requested.name
+
+        if not parent.is_dir():
+            return []
+
+        options = []
+        for path in sorted(parent.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())):
+            if prefix and not path.name.startswith(prefix):
+                continue
+            relative = path.relative_to(root).as_posix()
+            if path.is_dir():
+                options.append(f"/rag add_document {relative}/")
+            elif path.is_file() and path.suffix:
+                options.append(f"/rag add_document {relative}")
+        return options
+
+    def _handle_rag_add_documents_command(self, path_text:str)->None:
+        self.run_worker(
+            lambda: self.app.handler.r4.provider.dbclient.add_document(str(path_text)),
+            name="rag-add-document",
+            exclusive=True,
+            thread=True,
+            exit_on_error=False,
+        )
+        self.prompt_area.clear()
+        self.hide_command_list()
+        self.prompt_area.disabled = True
 
     def select_path(self, path_text: str) -> bool:
         root = Path.cwd().resolve()
@@ -683,7 +764,46 @@ class R4TUI(App):
         self._update_model_banner()
         if field == "system_prompt":
             self.update_log()
-
+           
+    def _get_prompt_suggestions(self, args: list[str]) -> list[str]:
+        # args içerisinden sadece yazılan son kelimeyi al
+        search_key = args[0].strip() if args else ""
+        return [
+            f"/prompt {key}" 
+            for key in self.prompts.keys() 
+            if key.startswith(search_key)
+        ]
+    
+    def _handle_prompt_command(self, key_text: str) -> None:
+        # 1. Gelen metni temizle (/prompt kalıntısı veya fazla boşluklar varsa sök)
+        clean_key = key_text.replace("/prompt", "").strip()
+        
+        # 2. Sözlükten değeri çek
+        value = self.prompts.get(clean_key)
+        if value:
+            # 3. Önce kutudaki komut yazısını sil, sonra yeni prompt metnini yaz
+            self.prompt_area.clear()
+            self.prompt_area.text = value
+            self.prompt_area.focus()
+            
+    def _get_providerset_suggestions(self, args: list[str]) -> list[str]:
+        search_key = args[0].strip() if args else ""
+        return [
+            f"/providerset {key}" 
+            for key in list(self.usage_registery_sets.keys())
+            if key.startswith(search_key)
+        ]
+    
+    def _handle_providerset_command(self, key_text:str )-> None:
+        key = key_text.replace("/providerset", "").strip()
+        self.usage_chosen_registery_set = self.usage_registery_sets.get(key)
+        self.handler.r4.change_provider_manager(
+            ProviderManager(self.usage_chosen_registery_set)
+        )
+        self._update_model_banner()
+        self.prompt_area.clear()
+        self.prompt_area.focus()     
+        
     @on(TextArea.Changed, "#prompt-area")
     def on_prompt_changed(self, event: TextArea.Changed) -> None:
         text = event.text_area.text
@@ -743,10 +863,17 @@ class R4TUI(App):
             self.handler.r4.message_sequnce.sequence,
             pending_message,
         )
+        
+    def on_key(self, event) -> None:
+        if event.key == "enter":
+            self.prompt_area.focus()
+        elif event.key == "right" or event.key == "left":
+            if self.current_screen_idx == 0:
+                self.show_logs_view()
+            elif self.current_screen_idx == 1:
+                self.show_chat_view()
+            
 
 
 if __name__ == "__main__":
-    registery_sets, prompts = UsageRegisteryLoader.load()
-    provider = ProviderManager(registery_sets["coder"])
-    stream = True
-    R4TUI(provider, stream).run()
+    R4TUI().run()

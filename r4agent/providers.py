@@ -29,19 +29,19 @@ read_env(Path(__file__).parent / ".env")
 
 class ModelRegistery:
     context_models: dict[str, tuple[type[BaseContextGenerationModel], type[BaseModel]]] = {
-        "ollama": (OllamaGenModel, OllamaConfig),
-        "gemini": (GeminiGenModel, GeminiGenConfig),
+        "ollama-qwen3.5:4b": (OllamaGenModel, OllamaConfig(think=True)),
+        "gemini": (GeminiGenModel, GeminiGenConfig()),
     }
     toolgen_models: dict[str, tuple[type[BaseToolGenerationModel], type[BaseModel]]] = {
-        "ollama": (OllamaToolGenModel, OllamaConfig),
+        "ollama": (OllamaToolGenModel, OllamaConfig()),
     }
     embed_models: dict[str, tuple[type[BaseEmbeddingGenerationModel], type[BaseModel]]] = {
-        "ollama": (OllamaEmbeddingGenModel, OllamaConfig),
-        "gemini": (GeminiEmbedding, GeminiEmbedConfig),
-        "cosmos": (CosmosEmbedding, CosmosConfig),
+        "ollama": (OllamaEmbeddingGenModel, OllamaConfig()),
+        "gemini": (GeminiEmbedding, GeminiEmbedConfig()),
+        "cosmos": (CosmosEmbedding, CosmosConfig()),
     }
     whisper_models: dict[str, tuple[type[FasterWhisper], type[FasterWishperConfig]]] = {
-        "faster-whisper": (FasterWhisper, FasterWishperConfig),
+        "faster-whisper": (FasterWhisper, FasterWishperConfig()),
     }
 
     @classmethod
@@ -49,7 +49,7 @@ class ModelRegistery:
         models: dict = getattr(cls, cat)
         try:
             mdl, cfg = models[key]
-            return mdl(cfg())
+            return mdl(cfg)
         except KeyError:
             raise KeyError(
                 f"Yanlış model key: {key}. {cat} için bunlardan biri olmalı: {tuple(models.keys())}"

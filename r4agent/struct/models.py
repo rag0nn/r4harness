@@ -128,7 +128,7 @@ class GeminiGenModel(BaseContextGenerationModel):
                 model=self.config.model,
                 contents=contents,
                 config={
-                    "system_instruction": message_sequence.initial_system_prompt,
+                    "system_instruction": message_sequence.sequence[0].content,
                     "max_output_tokens": self.config.max_output_tokens,
                     "stop_sequences": self.config.stop_sequences,
                     "seed": self.config.seed,
@@ -141,7 +141,7 @@ class GeminiGenModel(BaseContextGenerationModel):
                 model=self.config.model,
                 contents=contents,
                 config={
-                    "system_instruction": message_sequence.initial_system_prompt,
+                    "system_instruction": message_sequence.sequence[0].content,
                     "max_output_tokens": self.config.max_output_tokens,
                     "stop_sequences": self.config.stop_sequences,
                     "seed": self.config.seed,

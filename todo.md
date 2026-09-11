@@ -16,10 +16,11 @@
 - ~~system prompt kaydetme, listeleme, seçme~~
 - ~~testler yaz~~
 - ~~örnekler güncelle~~
-- tui yeni yapıya name ile konfigürasyonlar da eklenmeli
-- tui provider seçme, yeniden oluşturma yani birazz daha üst yapıdan tekrardan inşa etme gibi.
-- tui prompt komutu
+- ~~tui prompt komutu~~
+- ~~tui komutları tree şeklinde yapalım~~
+- ~~komut sonrasın silme ayarını yeniden yap~~
+- ~~tui provider seçme, yeniden oluşturma yani biraz daha üst yapıdan tekrardan inşa etme gibi.~~
+- ~~tui rag için tui'den doküman ekleme~~
+- ~~enter, sağ sol  bindleri ekle~~
 - tui token/sn gibi metriklerin eklenmesi
-- tui komutları türkçe ve tree şeklinde yapalım
-- tui rag için tui'den doküman ekleme
-- farklı konfigüre model kombinasyon testleri
+- farklı konfigüre model kombinasyon performans testleri

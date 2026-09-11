@@ -1,7 +1,7 @@
 {
     "registery-sets" : {
         "assistant" : {
-            "context_model":  "ollama",
+            "context_model":  "ollama-qwen3.5:4b",
             "toolgen_model" : "ollama",
             "embed_model" : "cosmos",
             "whisper_model" : "faster-whisper",
