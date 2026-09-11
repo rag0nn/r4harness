@@ -9,13 +9,16 @@
 - ~~packet optional .toml handles~~
 - ~~detaylı konfigürasyon ayarları ve yönetimi~~
 - ~~tui'yi yeni yapı konfigürasyon ve runtime provider change için güncelle # rebuild~~
-- tui.py' yi biraz daha ayır.
-- komutları türkçe ve tree şeklinde yapalım
-- mcp refactoring?
-- initialization için birkaç farklı örnek registerySet
-- token/sn gibi metriklerin eklenmesi
-- detaylı test
-- testler yaz
-- örnekler güncelle
-- system prompt kaydetme, listeleme, seçme
-- rag için tui'den doküman ekleme
+- ~~tui.py' yi biraz daha ayır.~~
+- ~~detaylı test~~
+- ~~mcp refactoring?~~
+- ~~initialization için birkaç farklı örnek registerySet~~
+- ~~system prompt kaydetme, listeleme, seçme~~
+- ~~testler yaz~~
+- ~~örnekler güncelle~~
+- tui yeni yapıya name ile konfigürasyonlar da eklenmeli
+- tui provider seçme, yeniden oluşturma yani birazz daha üst yapıdan tekrardan inşa etme gibi.
+- tui prompt komutu
+- tui token/sn gibi metriklerin eklenmesi
+- tui komutları türkçe ve tree şeklinde yapalım
+- tui rag için tui'den doküman ekleme

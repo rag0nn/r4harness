@@ -43,6 +43,9 @@ class MessageSequence:
             Message(role=Roles.system, content=initial_system_prompt)
         ]
         
+    def __len__(self):
+        return len(self.sequence)
+        
     def __str__(self):
         return "\n\n".join([f"role: {e.role} content: {f"{e.content[:20]}..." if e.content else "-"} tools_calls: {f"{e.tool_calls[:10]}..." if e.tool_calls else "-"}" for e in self.sequence])
 
@@ -61,8 +64,13 @@ class MessageSequence:
     def get_as_dicts(self)->list[dict]:
         return [m.to_dict() for m in self.sequence]
     
-    def save(self, path:str | Path):
-        """Konuşma geçmişini JSON dosyası olarak kalıcılaştırır."""
+    def save(self, path:str | Path) -> Path:
+        """Konuşma geçmişini JSON dosyası olarak kalıcılaştırır. 
+            Args:
+                path (Path): kaydedilecek klasörün yolu
+            Returns:
+                Kaydedilmiş tam yol.
+        """
         if isinstance(path, str):
             path = Path(path)
         
@@ -72,6 +80,7 @@ class MessageSequence:
         
         file_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         logging.info(f"Mesaj kuyruğu {file_path} konumuna kaydedildi")
+        return file_path
     
     def load(self, path: str | Path):
         """JSON geçmişini doğrulayıp mevcut konuşma sırasının yerine yükler."""

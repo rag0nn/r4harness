@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 from .rag.client import RAGClient, DocumentHandler
 from .rag.config import *
 from .struct.model_configs import *
-from .struct import MessageSequence, Message
+from .struct import MessageSequence, Message,FasterWhisper
 
 if TYPE_CHECKING:
     from .master import R4Agent

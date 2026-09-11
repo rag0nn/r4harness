@@ -12,10 +12,9 @@ class R4Agent:
 
     def __init__(self,
             provider: ProviderManager | None = None,
-            stream : bool = False,
-            ):
+            stream : bool = False, ):
         self.stream = stream
-        self.provider = provider or ProviderManager()
+        self.provider = provider or ProviderManager(RegisterySet())
         self._build()
         
     @log_execution_time
@@ -91,9 +90,9 @@ class R4Agent:
         """
         self.message_sequnce.load(path=path)
 
-    def save_messages(self, path: str | Path):
-        """Mesaj geçmişini kaydeder. (json)"""
-        self.message_sequnce.save(path=path)
+    def save_messages(self, path: str | Path)->Path:
+        """Mesaj geçmişini kaydeder. (json), kaydedilmiş yolu döndürür."""
+        return self.message_sequnce.save(path=path)
 
     def reset_messages(self):
         """Mesaj geçmişini resetler. """

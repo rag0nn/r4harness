@@ -1,0 +1,25 @@
+{
+    "registery-sets" : {
+        "assistant" : {
+            "context_model":  "ollama",
+            "toolgen_model" : "ollama",
+            "embed_model" : "cosmos",
+            "whisper_model" : "faster-whisper",
+            "system_prompt" : "Sen bir yapay zeka asistanısın. İstenen çıktıları en net ve gerekli şekliyle ver, yorum katma."
+        },
+        "coder" : {
+            "context_model":  "gemini",
+            "toolgen_model" : "ollama",
+            "embed_model" : "cosmos",
+            "whisper_model" : "faster-whisper",
+            "system_prompt" : "Sen bir yapay zeka kod programcısının. İstenen kod çıktılarını en net ve gerekli şekliyle ver."
+        
+        }
+    },
+    "prompts" : {
+        "blog" : "Bu verileri blogumda araştır ve getir. En minimal şekilde cevabı oluştur.",
+        "date" : "Şuan tam tarih ve saat kaç?",
+        "research" : "Bu konu hakkında internette arama yap ve en ilgili sonuçları özetle"
+    }
+
+}

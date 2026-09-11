@@ -18,7 +18,7 @@ from .session_controller import SessionController
 from .widgets import ModelBanner, PromptTextArea
 from r4agent import R4Agent, Message
 from r4agent.struct.base import Roles
-from r4agent.providers import ProviderManager, RegisterySet, ModelRegistery
+from r4agent.providers import ProviderManager, RegisterySet, ModelRegistery, UsageRegisteryLoader
 
 class R4TUI(App):
     CSS_PATH = "styles.tcss"
@@ -51,13 +51,13 @@ class R4TUI(App):
         whisper = self.provider.registery_set.whisper_model
         base = f"CG: {context}   TG: {tool}   EG: {embed}    W: {whisper}"
         repeat = base + "   " + base + "   " + base
-        window = 60
+        window = 80
         start = self._banner_offset % len(base)
         return repeat[start:start + window]
 
     def _update_model_banner(self) -> None:
         try:
-            banner = self.query_one("#model-banner", ModelBanner)
+            banner = self.model_banner
         except Exception:
             return
 
@@ -69,7 +69,7 @@ class R4TUI(App):
             return
 
         frames = ("  ...", " ... ", "...  ", " ... ")
-        status = self.query_one("#query-status", Label)
+        status = self.query_status_label
         status.update(frames[self._query_status_offset])
         self._query_status_offset = (self._query_status_offset + 1) % len(frames)
 
@@ -105,6 +105,24 @@ class R4TUI(App):
             yield Label(":-)", id="farewell-face")
             
     def on_mount(self) -> None:
+        self.model_banner = self.query_one("#model-banner", ModelBanner)
+        self.query_status_label = self.query_one("#query-status", Label)
+        self.chat_view_button = self.query_one("#chat-view-button", Button)
+        self.logs_view_button = self.query_one("#logs-view-button", Button)
+        self.chat_screen = self.query_one("#chat-screen", Container)
+        self.logs_screen = self.query_one("#logs-screen", Container)
+        self.prompt_area = self.query_one("#prompt-area", PromptTextArea)
+        self.init_loader = self.query_one("#init-loader", LoadingIndicator)
+        self.init_status_label = self.query_one("#init-status", Label)
+        self.record_button = self.query_one("#record-button", Button)
+        self.view_switcher = self.query_one("#view-switcher", Container)
+        self.loading_screen = self.query_one("#loading-screen", Container)
+        self.farewell_screen = self.query_one("#farewell-screen", Container)
+        self.farewell_face_label = self.query_one("#farewell-face", Label)
+        self.command_list = self.query_one("#command-list", OptionList)
+        self.selected_files_panel = self.query_one("#selected-files", Static)
+        self.chat_log = self.query_one("#chat-log", VerticalScroll)
+
         self.log_controller.capture()
         self.commands: dict[str, Callable[[], None]] = {
             "/reset": self.reset_command,
@@ -134,19 +152,19 @@ class R4TUI(App):
     @on(Button.Pressed, "#chat-view-button")
     def show_chat_view(self) -> None:
         self._active_view = "chat"
-        self.query_one("#chat-screen").display = True
-        self.query_one("#logs-screen").display = False
-        self.query_one("#chat-view-button", Button).variant = "primary"
-        self.query_one("#logs-view-button", Button).variant = "default"
+        self.chat_screen.display = True
+        self.logs_screen.display = False
+        self.chat_view_button.variant = "primary"
+        self.logs_view_button.variant = "default"
 
     @on(Button.Pressed, "#logs-view-button")
     def show_logs_view(self) -> None:
         self._active_view = "logs"
         self._render_logs()
-        self.query_one("#chat-screen").display = False
-        self.query_one("#logs-screen").display = True
-        self.query_one("#chat-view-button", Button).variant = "default"
-        self.query_one("#logs-view-button", Button).variant = "primary"
+        self.chat_screen.display = False
+        self.logs_screen.display = True
+        self.chat_view_button.variant = "default"
+        self.logs_view_button.variant = "primary"
 
     def on_unmount(self) -> None:
         self.log_controller.restore()
@@ -156,8 +174,8 @@ class R4TUI(App):
 
     def _finish_voice_processing(self, message: str) -> None:
         self._query_waiting = False
-        self.query_one("#prompt-area", PromptTextArea).disabled = False
-        status = self.query_one("#query-status", Label)
+        self.prompt_area.disabled = False
+        status = self.query_status_label
         status.update(message)
         status.display = True
         self.set_timer(1.5, lambda: setattr(status, "display", False))
@@ -167,14 +185,14 @@ class R4TUI(App):
         if self.handler is None or (self._query_waiting and not self._voice_recording):
             return
 
-        button = self.query_one("#record-button", Button)
-        promptarea = self.query_one("#prompt-area", PromptTextArea)
+        button = self.record_button
+        promptarea = self.prompt_area
         if not self._voice_recording:
             self._query_waiting = True
             self._query_status_offset = 0
             promptarea.disabled = True
             button.disabled = True
-            self.query_one("#query-status", Label).display = True
+            self.query_status_label.display = True
             self.run_worker(
                 lambda: self.handler.r4.provider.whisper.start_recording(),
                 name="voice-start",
@@ -186,7 +204,7 @@ class R4TUI(App):
 
         self._voice_recording = False
         button.disabled = True
-        self.query_one("#query-status", Label).update("Ses işleniyor")
+        self.query_status_label.update("Ses işleniyor")
         self._voice_worker = self.run_worker(
             lambda: self.handler.r4.provider.whisper.stop_recording(),
             name="voice-stop",
@@ -201,18 +219,18 @@ class R4TUI(App):
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         """Finalize each worker only in its owning UI state transition."""
         if event.worker.name == "agent-init":
-            loader = self.query_one("#init-loader", LoadingIndicator)
-            status = self.query_one("#init-status", Label)
+            loader = self.init_loader
+            status = self.init_status_label
             if event.state is WorkerState.SUCCESS:
                 self.handler = event.worker.result
                 self.session_controller = SessionController(self.handler)
-                self.query_one("#record-button", Button).disabled = False
-                self.query_one("#chat-view-button", Button).disabled = False
-                self.query_one("#logs-view-button", Button).disabled = False
-                self.query_one("#view-switcher").display = True
+                self.record_button.disabled = False
+                self.chat_view_button.disabled = False
+                self.logs_view_button.disabled = False
+                self.view_switcher.display = True
                 self._update_model_banner()
-                self.query_one("#loading-screen").display = False
-                self.query_one("#chat-screen").display = True
+                self.loading_screen.display = False
+                self.chat_screen.display = True
                 self.update_log()
                 self._render_logs()
             elif event.state is WorkerState.ERROR:
@@ -221,39 +239,39 @@ class R4TUI(App):
             return
 
         if event.worker.name == "load-chat":
-            promptarea = self.query_one("#prompt-area", PromptTextArea)
+            promptarea = self.prompt_area
             promptarea.disabled = False
             if event.state is WorkerState.SUCCESS:
-                self.query_one("#query-status", Label).update("Sohbet yüklendi")
+                self.query_status_label.update("Sohbet yüklendi")
                 self.update_log()
             elif event.state is WorkerState.ERROR:
-                self.query_one("#query-status", Label).update(
+                self.query_status_label.update(
                     f"Yükleme hatası: {event.worker.error}"
                 )
-            self.query_one("#query-status", Label).display = True
+            self.query_status_label.display = True
             return
 
         if event.worker.name == "provider-rebuild":
-            promptarea = self.query_one("#prompt-area", PromptTextArea)
+            promptarea = self.prompt_area
             promptarea.disabled = False
             if event.state is WorkerState.SUCCESS:
                 self._update_model_banner()
-                self.query_one("#query-status", Label).update("Provider değiştirildi")
+                self.query_status_label.update("Provider değiştirildi")
                 self.update_log()
             elif event.state is WorkerState.ERROR:
-                self.query_one("#query-status", Label).update(
+                self.query_status_label.update(
                     f"Provider değiştirme hatası: {event.worker.error}"
                 )
-            self.query_one("#query-status", Label).display = True
+            self.query_status_label.display = True
             return
 
         if event.worker.name == "voice-start":
-            button = self.query_one("#record-button", Button)
+            button = self.record_button
             if event.state is WorkerState.SUCCESS:
                 self._voice_recording = True
                 button.label = "STOP"
                 button.disabled = False
-                self.query_one("#query-status", Label).update("Kayıt yapılıyor")
+                self.query_status_label.update("Kayıt yapılıyor")
             elif event.state is WorkerState.ERROR:
                 self._voice_recording = False
                 button.label = "REC"
@@ -277,8 +295,8 @@ class R4TUI(App):
                 return
 
             self._voice_worker = None
-            button = self.query_one("#record-button", Button)
-            promptarea = self.query_one("#prompt-area", PromptTextArea)
+            button = self.record_button
+            promptarea = self.prompt_area
             button.label = "REC"
             button.disabled = False
             promptarea.disabled = False
@@ -319,7 +337,7 @@ class R4TUI(App):
         ):
             return
 
-        promptarea = self.query_one("#prompt-area", PromptTextArea)
+        promptarea = self.prompt_area
         promptarea.disabled = False
         self._query_worker = None
         if event.state is WorkerState.SUCCESS:
@@ -328,20 +346,20 @@ class R4TUI(App):
             result = event.worker.result
             if result:
                 self._ensure_response_message(result[-1][0])
-            self.query_one("#query-status", Label).display = False
+            self.query_status_label.display = False
             self.update_log()
         elif event.state is WorkerState.CANCELLED:
             self._query_waiting = False
             self.query_controller.finish()
-            self.query_one("#query-status", Label).update("Sorgu durduruldu")
-            self.query_one("#query-status", Label).display = True
+            self.query_status_label.update("Sorgu durduruldu")
+            self.query_status_label.display = True
         elif event.state is WorkerState.ERROR:
             self._query_waiting = False
             self.query_controller.finish()
-            self.query_one("#query-status", Label).update(
+            self.query_status_label.update(
                 f"Sorgu hatası: {event.worker.error}"
             )
-            self.query_one("#query-status", Label).display = True
+            self.query_status_label.display = True
 
     def _looks_like_command(self, text: str) -> bool:
         return CommandParser.looks_like_command(text)
@@ -372,7 +390,7 @@ class R4TUI(App):
                 self.show_select_list()
             elif command.startswith("/select "):
                 if self.select_path(command.removeprefix("/select ").strip()):
-                    self.query_one("#prompt-area", PromptTextArea).clear()
+                    self.prompt_area.clear()
                     self.hide_command_list()
             elif command in self.commands:
                 self.commands[command]()
@@ -382,7 +400,7 @@ class R4TUI(App):
                 self.show_command_list(command)
             return
 
-        promptarea = self.query_one("#prompt-area", PromptTextArea)
+        promptarea = self.prompt_area
         promptarea.clear()
         promptarea.disabled = True
         self.hide_command_list()
@@ -392,7 +410,7 @@ class R4TUI(App):
         query_prompt = self._build_query_prompt(prompt)
         self._selected_files.clear()
         self.update_selected_files()
-        self.query_one("#query-status", Label).display = True
+        self.query_status_label.display = True
         self.update_log(Message(role=Roles.user, content=prompt))
 
         def run_query():
@@ -424,8 +442,8 @@ class R4TUI(App):
             return False
         self._query_waiting = False
         self._query_worker = None
-        self.query_one("#prompt-area", PromptTextArea).disabled = False
-        status = self.query_one("#query-status", Label)
+        self.prompt_area.disabled = False
+        status = self.query_status_label
         status.update("Mesaj iptal edildi")
         status.display = True
         self.set_timer(1.5, lambda: setattr(status, "display", False))
@@ -436,6 +454,7 @@ class R4TUI(App):
         if sequence and sequence[-1].role == Roles.assistant:
             return
         sequence.append(Message(role=Roles.assistant, content=content or ""))
+        
     def reset_command(self) -> None:
         if self.handler is None:
             return
@@ -443,32 +462,32 @@ class R4TUI(App):
         self.session_controller.reset()
         self._selected_files.clear()
         self.update_selected_files()
-        self.query_one("#prompt-area", PromptTextArea).clear()
+        self.prompt_area.clear()
         self.hide_command_list()
-        self.query_one("#query-status", Label).update("Mesajlar sıfırlandı")
-        self.query_one("#query-status", Label).display = True
+        self.query_status_label.update("Mesajlar sıfırlandı")
+        self.query_status_label.display = True
         self.update_log()
 
     def exit_command(self) -> None:
-        self.query_one("#loading-screen").display = False
-        self.query_one("#chat-screen").display = False
-        self.query_one("#farewell-screen").display = True
-        self.query_one("#farewell-face", Label).update(":-)")
+        self.loading_screen.display = False
+        self.chat_screen.display = False
+        self.farewell_screen.display = True
+        self.farewell_face_label.update(":-)")
         self.set_timer(0.85, self._wink)
         self.set_timer(1.5, self.exit)
 
     def _wink(self) -> None:
-        self.query_one("#farewell-face", Label).update(";-)")
+        self.farewell_face_label.update(";-)")
 
     def save_command(self) -> None:
         if self.handler is None:
             return
 
         self.session_controller.save()
-        self.query_one("#prompt-area", PromptTextArea).clear()
+        self.prompt_area.clear()
         self.hide_command_list()
-        self.query_one("#query-status", Label).update("Sohbet kaydedildi")
-        self.query_one("#query-status", Label).display = True
+        self.query_status_label.update("Sohbet kaydedildi")
+        self.query_status_label.display = True
         self.update_log()
 
     def load_command(self, chat_name: str) -> None:
@@ -484,18 +503,18 @@ class R4TUI(App):
             None,
         )
         if chat_path is None:
-            self.query_one("#query-status", Label).update(
+            self.query_status_label.update(
                 f"Sohbet bulunamadı: {chat_name}"
             )
-            self.query_one("#query-status", Label).display = True
+            self.query_status_label.display = True
             return
 
-        promptarea = self.query_one("#prompt-area", PromptTextArea)
+        promptarea = self.prompt_area
         promptarea.clear()
         promptarea.disabled = True
         self.hide_command_list()
-        self.query_one("#query-status", Label).update("Sohbet yükleniyor...")
-        self.query_one("#query-status", Label).display = True
+        self.query_status_label.update("Sohbet yükleniyor...")
+        self.query_status_label.display = True
         self.run_worker(
             lambda: self.session_controller.load(chat_path),
             name="load-chat",
@@ -530,19 +549,19 @@ class R4TUI(App):
             return
 
         if command.startswith("/select "):
-            promptarea = self.query_one("#prompt-area", PromptTextArea)
+            promptarea = self.prompt_area
             promptarea.load_text_at_end(command)
             promptarea.focus()
             self.hide_command_list()
             return
 
-        promptarea = self.query_one("#prompt-area", PromptTextArea)
+        promptarea = self.prompt_area
         promptarea.load_text_at_end(command)
         promptarea.focus()
         self.hide_command_list()
 
     def complete_command_hint(self) -> bool:
-        command_list = self.query_one("#command-list", OptionList)
+        command_list = self.command_list
         if not command_list.display or not command_list.option_count:
             return False
 
@@ -552,20 +571,20 @@ class R4TUI(App):
             return False
 
         if command.startswith("/select "):
-            promptarea = self.query_one("#prompt-area", PromptTextArea)
+            promptarea = self.prompt_area
             promptarea.load_text_at_end(command)
             promptarea.focus()
             self.hide_command_list()
             return True
 
-        promptarea = self.query_one("#prompt-area", PromptTextArea)
+        promptarea = self.prompt_area
         promptarea.load_text_at_end(command)
         promptarea.focus()
         self.hide_command_list()
         return True
 
     def show_command_list(self, query: str = "/") -> None:
-        command_list = self.query_one("#command-list", OptionList)
+        command_list = self.command_list
         options = [
             Option(command, id=command)
             for command in self.commands
@@ -575,7 +594,7 @@ class R4TUI(App):
         command_list.display = bool(options)
 
     def show_chat_list(self, query: str = "") -> None:
-        command_list = self.query_one("#command-list", OptionList)
+        command_list = self.command_list
         options = [
             Option(path.stem, id=f"/load {path.name}")
             for path in self.session_controller.list_chats()
@@ -591,7 +610,7 @@ class R4TUI(App):
             "embed_model":  ModelRegistery.embed_models,
             "toolgen_model": ModelRegistery.toolgen_models,
         }
-        command_list = self.query_one("#command-list", OptionList)
+        command_list = self.command_list
         parts = query.split()
 
         if not parts or (len(parts) == 1 and not query.endswith(" ") and parts[0] not in fields):
@@ -627,8 +646,8 @@ class R4TUI(App):
             prefix = requested.name
 
         if not parent.is_dir():
-            self.query_one("#command-list", OptionList).set_options([])
-            self.query_one("#command-list", OptionList).display = False
+            self.command_list.set_options([])
+            self.command_list.display = False
             return
 
         options = []
@@ -642,7 +661,7 @@ class R4TUI(App):
             elif path.is_file() and path.suffix:
                 options.append(Option(relative, id=f"/select {relative}"))
 
-        command_list = self.query_one("#command-list", OptionList)
+        command_list = self.command_list
         command_list.set_options(options)
         command_list.display = bool(options)
 
@@ -683,12 +702,12 @@ class R4TUI(App):
             self.show_change_list(change)
             return
 
-        promptarea = self.query_one("#prompt-area", PromptTextArea)
+        promptarea = self.prompt_area
         promptarea.clear()
         promptarea.disabled = True
         self.hide_command_list()
-        self.query_one("#query-status", Label).update("Provider yeniden kuruluyor...")
-        self.query_one("#query-status", Label).display = True
+        self.query_status_label.update("Provider yeniden kuruluyor...")
+        self.query_status_label.display = True
 
         def rebuild() -> None:
             setter(key)
@@ -703,10 +722,10 @@ class R4TUI(App):
         self._update_model_banner()
 
     def hide_command_list(self) -> None:
-        self.query_one("#command-list", OptionList).display = False
+        self.command_list.display = False
 
     def update_selected_files(self) -> None:
-        panel = self.query_one("#selected-files", Static)
+        panel = self.selected_files_panel
         if not self._selected_files:
             panel.update("")
             panel.display = False
@@ -721,7 +740,7 @@ class R4TUI(App):
         """Render the current agent sequence through the message projection module."""
         if self.handler is None:
             return
-        chatlog = self.query_one("#chat-log", VerticalScroll)
+        chatlog = self.chat_log
         render_messages(
             chatlog,
             self.handler.r4.message_sequnce.sequence,
@@ -730,7 +749,7 @@ class R4TUI(App):
 
     
 if __name__ == "__main__":
-    registery_set = RegisterySet()
-    provider = ProviderManager(registery_set)
+    registery_sets, prompts = UsageRegisteryLoader.load()
+    provider = ProviderManager(registery_sets["coder"])
     stream = True
     R4TUI(provider, stream).run()

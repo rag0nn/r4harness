@@ -1,5 +1,6 @@
 import threading
 import logging
+import json
 
 from .struct.models import (
     BaseContextGenerationModel,
@@ -98,6 +99,24 @@ class RegisterySet(BaseModel):
     whisper_model : str = "faster-whisper"
     system_prompt : str = "Sen bir yapay zeka asistanısın. İstenen çıktıları en net ve gerekli şekliyle ver, yorum katma."
 
+class UsageRegisteryLoader:
+        
+    USAGE_PATH = Path(__file__).parent / "usage.json"
+    
+    @classmethod
+    def load(cls):
+        if not cls.USAGE_PATH.exists():
+            raise FileNotFoundError(f"File is missing: {cls.USAGE_PATH}")
+        with open(cls.USAGE_PATH, "r", encoding="utf-8") as f:
+            content = json.load(f)
+        
+        prompts_dict:dict = content["prompts"]
+        registery_sets: dict[str, RegisterySet] = {}
+        for k, v in  content["registery-sets"].items():
+            registery_sets.update({k :  RegisterySet.model_validate(v)})
+            
+        return registery_sets, prompts_dict
+
 class ProviderManager:
     
     def __init__(self, registery_set: RegisterySet | None):
@@ -159,19 +178,23 @@ class ProviderManager:
     
     def close(self):
         if self._dbclient is not None:
-            self._dbclient.close()
+            with self._lock:   
+                if self._dbclient is not None:
+                    self._dbclient.close()
         
     def reset(self):
-        self.close()
-        self._system_prompt = ""
-        self._context_model = None
-        self._tool_model = None
-        self._embed_model = None
-        self._dbclient = None
-        self._whisper_model = None
+        with self._lock:
+            self.close()
+            self._system_prompt = ""
+            self._context_model = None
+            self._tool_model = None
+            self._embed_model = None
+            self._dbclient = None
+            self._whisper_model = None
         
     def change_system_prompt(self, text:str):
-        self.registery_set.system_prompt = text
+        with self._lock:
+            self.registery_set.system_prompt = text
     
     def change_context_model(self, model_code:str):
         with self._lock:
@@ -187,6 +210,9 @@ class ProviderManager:
         with self._lock:
             self.registery_set.embed_model = model_code
             self._embed_model = ModelRegistery.build_embed_model(model_code)
+            if self._dbclient is not None:
+                self._dbclient.close()
+                self._dbclient = None
             
     def change_whisper_model(self, model_code:str):
         with self._lock:

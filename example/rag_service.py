@@ -1,10 +1,17 @@
 from r4agent import *
 from r4agent.utils import setup_logging
-from r4agent.providers import ProviderManager, RegisterySet
+from r4agent.rag import DbElement, RAGClient, QDrantDatabase, Chunker, ChunkerConfig, VectorDatabaseConfig
+from r4agent.struct.models import CosmosEmbedding, CosmosConfig
+
 
 setup_logging(force=True)
-provider = ProviderManager(RegisterySet())
-db_client = provider.dbclient
+
+db_client = RAGClient(
+  QDrantDatabase(VectorDatabaseConfig()),
+  Chunker(ChunkerConfig),
+  CosmosEmbedding(CosmosConfig())
+)
+
 # path = Path("/home/enes/Desktop/ollama2.md")
 path = "https://tarhannes.com.tr/posts/rag-mimarisi/"
 
