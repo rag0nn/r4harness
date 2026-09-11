@@ -81,6 +81,7 @@ class MCPClient:
                 except Exception as error:
                     result.set_exception(error)
         except Exception as error:
+            logging.exception("MCP Server başlatılırken hata oluştu:")
             if not self._startup.done():
                 self._startup.set_exception(error)
         finally:

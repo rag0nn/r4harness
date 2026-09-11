@@ -22,3 +22,4 @@
 - tui token/sn gibi metriklerin eklenmesi
 - tui komutları türkçe ve tree şeklinde yapalım
 - tui rag için tui'den doküman ekleme
+- farklı konfigüre model kombinasyon testleri

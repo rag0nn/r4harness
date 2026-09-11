@@ -38,7 +38,6 @@ class Message:
 class MessageSequence:
     
     def __init__(self, initial_system_prompt:str):
-        self.initial_system_prompt = initial_system_prompt
         self.sequence:list[Message] = [
             Message(role=Roles.system, content=initial_system_prompt)
         ]
@@ -54,10 +53,10 @@ class MessageSequence:
         self.sequence.append(message)
         logging.info(f"[{self.__class__.__name__}] Added new message => {message}")
         
-    def reset(self):
+    def reset(self, system_prompt:str = ""):
         """Konuşmayı başlangıç system mesajını koruyarak temizler."""
         self.sequence = [
-            Message(role=Roles.system, content=self.initial_system_prompt)
+            Message(role=Roles.system, content=system_prompt)
         ]
         logging.info(f"[{self.__class__.__name__}] Mesaj kuyruğu başarıyla temizlendi")
         

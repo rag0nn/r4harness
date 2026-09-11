@@ -96,4 +96,4 @@ class R4Agent:
 
     def reset_messages(self):
         """Mesaj geçmişini resetler. """
-        self.message_sequnce.reset()
+        self.message_sequnce.reset(self.provider.system_prompt)

@@ -1,33 +1,104 @@
-from textual.containers import Container, VerticalScroll
+from pathlib import Path
+from typing import Any, Callable, TypedDict
 from textual import on
-from textual.widgets import Button, Header, Label, LoadingIndicator, Static, TextArea
-from textual.widgets import OptionList
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Container, VerticalScroll
+from textual.widgets import Button, Header, Label, LoadingIndicator, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 from textual.worker import Worker, WorkerState
-from textual.app import App,ComposeResult
-from textual.binding import Binding
-from pathlib import Path
-from typing import Callable
 
-from .handler import Handler
+from r4agent import Message, R4Agent
+from r4agent.providers import ModelRegistery, ProviderManager, UsageRegisteryLoader
+from r4agent.struct.base import Roles
+
 from .command_parser import CommandParser
+from .handler import Handler
 from .log_controller import LogController
 from .message_renderer import render_messages
 from .query_controller import QueryController
 from .session_controller import SessionController
 from .widgets import ModelBanner, PromptTextArea
-from r4agent import R4Agent, Message
-from r4agent.struct.base import Roles
-from r4agent.providers import ProviderManager, RegisterySet, ModelRegistery, UsageRegisteryLoader
+
+
+class CommandNode(TypedDict, total=False):
+    subcommands: dict[str, "CommandNode"]
+    arg_provider: Callable[["R4TUI", list[str]], list[str]] | None
+    handler: Callable[["R4TUI", list[str]], None]
+
+
+class CommandRunner:
+    """Çok aşamalı (Tree) komut çözümleme ve otomatik tamamlama motoru."""
+
+    def __init__(self, app: "R4TUI", tree: dict[str, CommandNode]):
+        self.app = app
+        self.tree = tree
+
+    def resolve(self, full_text: str) -> tuple[CommandNode | None, list[str]]:
+        parts = full_text.strip().split()
+        if not parts:
+            return None, []
+
+        cmd_root = parts[0]
+        if cmd_root not in self.tree:
+            return None, []
+
+        current_node = self.tree[cmd_root]
+        consumed_index = 1
+
+        while consumed_index < len(parts):
+            next_word = parts[consumed_index]
+            subcommands = current_node.get("subcommands", {})
+            if next_word in subcommands:
+                current_node = subcommands[next_word]
+                consumed_index += 1
+            else:
+                break
+
+        remaining_args = parts[consumed_index:]
+        return current_node, remaining_args
+
+    def get_suggestions(self, full_text: str) -> list[str]:
+        if not full_text.startswith("/"):
+            return []
+
+        parts = full_text.split()
+        if len(parts) == 1 and not full_text.endswith(" "):
+            return [cmd for cmd in self.tree if cmd.startswith(parts[0])]
+
+        node, remaining_args = self.resolve(full_text)
+        if not node:
+            return []
+
+        subcommands = node.get("subcommands", {})
+        if subcommands:
+            prefix = remaining_args[0] if remaining_args else ""
+            matches = [sub for sub in subcommands if sub.startswith(prefix)]
+            base_cmd = " ".join(parts[: len(parts) - (1 if remaining_args else 0)])
+            return [f"{base_cmd} {match}".strip() for match in matches]
+
+        provider = node.get("arg_provider")
+        if provider:
+            return provider(self.app, remaining_args)
+
+        return []
+
+    def execute(self, full_text: str) -> bool:
+        node, remaining_args = self.resolve(full_text)
+        if node and "handler" in node:
+            node["handler"](self.app, remaining_args)
+            return True
+        return False
+
 
 class R4TUI(App):
     CSS_PATH = "styles.tcss"
-    TITLE= "R4Agent"
+    TITLE = "R4Agent"
     BINDINGS = [
         Binding("ctrl+b", "cancel_query", show=True, priority=True),
     ]
-    
-    def __init__(self, provider: ProviderManager, stream: bool = True):
+
+    def __init__(self, provider: ProviderManager, stream: bool = True, prompts: dict = None):
         self.handler: Handler | None = None
         self.provider = provider
         self.stream = stream
@@ -42,6 +113,78 @@ class R4TUI(App):
         self.log_controller = LogController(self)
         self.session_controller: SessionController | None = None
         self._active_view = "chat"
+        self.prompts = prompts
+
+        # Çok Aşamalı Komut Ağacı (COMMAND TREE)
+        self.command_tree: dict[str, CommandNode] = {
+            "/reset": {
+                "handler": lambda app, args: app.reset_command(),
+            },
+            "/save": {
+                "handler": lambda app, args: app.save_command(),
+            },
+            "/exit": {
+                "handler": lambda app, args: app.exit_command(),
+            },
+            "/load": {
+                "arg_provider": lambda app, args: [
+                    f"/load {p.name}"
+                    for p in app.session_controller.list_chats()
+                    if p.name.startswith(args[0] if args else "")
+                ],
+                "handler": lambda app, args: app.load_command(args[0] if args else ""),
+            },
+            "/select": {
+                "arg_provider": lambda app, args: app._get_select_suggestions(args[0] if args else ""),
+                "handler": lambda app, args: app._handle_select_command(" ".join(args)),
+            },
+            "/change": {
+                # 2 Aşamalı & 3 Aşamalı Hibrit Yapı
+                "subcommands": {
+                    "context_model": {
+                        "arg_provider": lambda app, args: [
+                            f"/change context_model {k}"
+                            for k in ModelRegistery.context_models
+                            if k.startswith(args[0] if args else "")
+                        ],
+                        "handler": lambda app, args: app.change_provider(f"context_model {args[0]}") if args else None,
+                    },
+                    "embed_model": {
+                        "arg_provider": lambda app, args: [
+                            f"/change embed_model {k}"
+                            for k in ModelRegistery.embed_models
+                            if k.startswith(args[0] if args else "")
+                        ],
+                        "handler": lambda app, args: app.change_provider(f"embed_model {args[0]}") if args else None,
+                    },
+                    "toolgen_model": {
+                        "arg_provider": lambda app, args: [
+                            f"/change toolgen_model {k}"
+                            for k in ModelRegistery.toolgen_models
+                            if k.startswith(args[0] if args else "")
+                        ],
+                        "handler": lambda app, args: app.change_provider(f"toolgen_model {args[0]}") if args else None,
+                    },
+                    "system_prompt" : {
+                        "handler": lambda app, args: app.change_provider(f"system_prompt {args[0]}")
+                    }
+                    # # 3 Aşamalı Örnek: /change provider context_model <model>
+                    # "provider": {
+                    #     "subcommands": {
+                    #         "context_model": {
+                    #             "arg_provider": lambda app, args: [
+                    #                 f"/change provider context_model {k}"
+                    #                 for k in ModelRegistery.context_models
+                    #                 if k.startswith(args[0] if args else "")
+                    #             ],
+                    #             "handler": lambda app, args: app.change_provider(f"context_model {args[0]}") if args else None,
+                    #         }
+                    #     }
+                    # },
+                }
+            },
+        }
+        self.command_runner = CommandRunner(self, self.command_tree)
         super().__init__()
 
     def _build_model_banner_text(self) -> str:
@@ -53,7 +196,7 @@ class R4TUI(App):
         repeat = base + "   " + base + "   " + base
         window = 80
         start = self._banner_offset % len(base)
-        return repeat[start:start + window]
+        return repeat[start : start + window]
 
     def _update_model_banner(self) -> None:
         try:
@@ -73,10 +216,7 @@ class R4TUI(App):
         status.update(frames[self._query_status_offset])
         self._query_status_offset = (self._query_status_offset + 1) % len(frames)
 
-    def compose(self)->ComposeResult:
-        """
-        Ekranı renderlar
-        """
+    def compose(self) -> ComposeResult:
         yield Header()
         yield ModelBanner("CG: loading... TG: loading... EG: loading...", id="model-banner")
         yield Static("", id="selected-files", markup=False)
@@ -92,18 +232,13 @@ class R4TUI(App):
             yield OptionList(id="command-list")
             with Container(id="prompt-row"):
                 yield PromptTextArea(id="prompt-area")
-                yield Button(
-                    "REC",
-                    id="record-button",
-                    variant="default",
-                    disabled=True,
-                )
+                yield Button("REC", id="record-button", variant="default", disabled=True)
         with Container(id="logs-screen"):
             yield Label("LOGS", id="logs-title")
             yield VerticalScroll(id="logs-view")
         with Container(id="farewell-screen"):
             yield Label(":-)", id="farewell-face")
-            
+
     def on_mount(self) -> None:
         self.model_banner = self.query_one("#model-banner", ModelBanner)
         self.query_status_label = self.query_one("#query-status", Label)
@@ -124,14 +259,6 @@ class R4TUI(App):
         self.chat_log = self.query_one("#chat-log", VerticalScroll)
 
         self.log_controller.capture()
-        self.commands: dict[str, Callable[[], None]] = {
-            "/reset": self.reset_command,
-            "/save": self.save_command,
-            "/load": self.show_chat_list,
-            "/change": self.show_change_list,
-            "/select": self.show_select_list,
-            "/exit": self.exit_command,
-        }
         self.call_after_refresh(self._update_model_banner)
         self.set_interval(0.22, self._update_model_banner)
         self.set_interval(0.18, self._update_query_status)
@@ -217,7 +344,6 @@ class R4TUI(App):
         return Handler(R4Agent(self.provider, self.stream))
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        """Finalize each worker only in its owning UI state transition."""
         if event.worker.name == "agent-init":
             loader = self.init_loader
             status = self.init_status_label
@@ -245,9 +371,7 @@ class R4TUI(App):
                 self.query_status_label.update("Sohbet yüklendi")
                 self.update_log()
             elif event.state is WorkerState.ERROR:
-                self.query_status_label.update(
-                    f"Yükleme hatası: {event.worker.error}"
-                )
+                self.query_status_label.update(f"Yükleme hatası: {event.worker.error}")
             self.query_status_label.display = True
             return
 
@@ -259,9 +383,7 @@ class R4TUI(App):
                 self.query_status_label.update("Provider değiştirildi")
                 self.update_log()
             elif event.state is WorkerState.ERROR:
-                self.query_status_label.update(
-                    f"Provider değiştirme hatası: {event.worker.error}"
-                )
+                self.query_status_label.update(f"Provider değiştirme hatası: {event.worker.error}")
             self.query_status_label.display = True
             return
 
@@ -276,9 +398,7 @@ class R4TUI(App):
                 self._voice_recording = False
                 button.label = "REC"
                 button.disabled = False
-                self._finish_voice_processing(
-                    f"Ses kaydı başlatılamadı: {event.worker.error}"
-                )
+                self._finish_voice_processing(f"Ses kaydı başlatılamadı: {event.worker.error}")
             elif event.state is WorkerState.CANCELLED:
                 self._voice_recording = False
                 button.label = "REC"
@@ -287,11 +407,7 @@ class R4TUI(App):
             return
 
         if event.worker.name == "voice-stop":
-            if event.state not in (
-                WorkerState.SUCCESS,
-                WorkerState.CANCELLED,
-                WorkerState.ERROR,
-            ):
+            if event.state not in (WorkerState.SUCCESS, WorkerState.CANCELLED, WorkerState.ERROR):
                 return
 
             self._voice_worker = None
@@ -309,32 +425,21 @@ class R4TUI(App):
                 )
                 if transcription:
                     current = promptarea.text.strip()
-                    promptarea.load_text_at_end(
-                        f"{current} {transcription}".strip()
-                    )
+                    promptarea.load_text_at_end(f"{current} {transcription}".strip())
                     promptarea.focus()
                     self._finish_voice_processing("Ses metne dönüştürüldü")
                 else:
                     self._finish_voice_processing("Ses metni algılanamadı")
             elif event.state is WorkerState.ERROR:
-                self._finish_voice_processing(
-                    f"Ses işleme hatası: {event.worker.error}"
-                )
+                self._finish_voice_processing(f"Ses işleme hatası: {event.worker.error}")
             else:
                 self._finish_voice_processing("Ses işleme iptal edildi")
             return
 
-        if event.worker.name != "query":
+        if event.worker.name != "query" or event.worker is not self._query_worker:
             return
 
-        if event.worker is not self._query_worker:
-            return
-
-        if event.state not in (
-            WorkerState.SUCCESS,
-            WorkerState.CANCELLED,
-            WorkerState.ERROR,
-        ):
+        if event.state not in (WorkerState.SUCCESS, WorkerState.CANCELLED, WorkerState.ERROR):
             return
 
         promptarea = self.prompt_area
@@ -356,49 +461,25 @@ class R4TUI(App):
         elif event.state is WorkerState.ERROR:
             self._query_waiting = False
             self.query_controller.finish()
-            self.query_status_label.update(
-                f"Sorgu hatası: {event.worker.error}"
-            )
+            self.query_status_label.update(f"Sorgu hatası: {event.worker.error}")
             self.query_status_label.display = True
-
-    def _looks_like_command(self, text: str) -> bool:
-        return CommandParser.looks_like_command(text)
-
-    @staticmethod
-    def _command_fragment(text: str) -> str | None:
-        return CommandParser.fragment(text)
 
     def _build_query_prompt(self, prompt: str) -> str:
         if not self._selected_files:
             return prompt
-
         file_context = "\n".join(f'file:"{path}"' for path in self._selected_files)
         return f"{prompt}\n{file_context}"
 
     def submit_prompt(self, prompt: str) -> None:
-        """Route a prompt to a command handler or to the cancellable query worker."""
         if not prompt.strip() or self.handler is None or self._query_waiting:
             return
 
-        command = self._command_fragment(prompt) or prompt.strip()
-        if self._looks_like_command(command):
-            if command == "/change":
-                self.show_change_list()
-            elif command.startswith("/change "):
-                self.change_provider(command.removeprefix("/change ").strip())
-            elif command == "/select":
-                self.show_select_list()
-            elif command.startswith("/select "):
-                if self.select_path(command.removeprefix("/select ").strip()):
-                    self.prompt_area.clear()
-                    self.hide_command_list()
-            elif command in self.commands:
-                self.commands[command]()
-            elif command.startswith("/load "):
-                self.load_command(command.removeprefix("/load ").strip())
-            else:
-                self.show_command_list(command)
-            return
+        full_prompt = prompt.strip()
+        if full_prompt.startswith("/"):
+            if self.command_runner.execute(full_prompt):
+                self.prompt_area.clear()
+                self.hide_command_list()
+                return
 
         promptarea = self.prompt_area
         promptarea.clear()
@@ -432,7 +513,6 @@ class R4TUI(App):
         self._query_worker._start(self, self.workers._remove_worker)
 
     def cancel_query(self) -> bool:
-        """Signal the active query stream to stop and restore prompt input."""
         if not self._query_waiting:
             return False
 
@@ -454,11 +534,10 @@ class R4TUI(App):
         if sequence and sequence[-1].role == Roles.assistant:
             return
         sequence.append(Message(role=Roles.assistant, content=content or ""))
-        
+
     def reset_command(self) -> None:
         if self.handler is None:
             return
-
         self.session_controller.reset()
         self._selected_files.clear()
         self.update_selected_files()
@@ -482,7 +561,6 @@ class R4TUI(App):
     def save_command(self) -> None:
         if self.handler is None:
             return
-
         self.session_controller.save()
         self.prompt_area.clear()
         self.hide_command_list()
@@ -495,17 +573,11 @@ class R4TUI(App):
             return
 
         chat_path = next(
-            (
-                path
-                for path in self.session_controller.list_chats()
-                if path.name == chat_name
-            ),
+            (path for path in self.session_controller.list_chats() if path.name == chat_name),
             None,
         )
         if chat_path is None:
-            self.query_status_label.update(
-                f"Sohbet bulunamadı: {chat_name}"
-            )
+            self.query_status_label.update(f"Sohbet bulunamadı: {chat_name}")
             self.query_status_label.display = True
             return
 
@@ -523,117 +595,7 @@ class R4TUI(App):
             exit_on_error=False,
         )
 
-    @on(TextArea.Changed, "#prompt-area")
-    def on_prompt_changed(self, event: TextArea.Changed) -> None:
-        text = event.text_area.text
-        trimmed = text.strip()
-        command = self._command_fragment(text)
-
-        if command == "/load":
-            self.show_chat_list()
-        elif command is not None and command.startswith("/load "):
-            self.show_chat_list(command.removeprefix("/load ").strip())
-        elif command == "/change" or (command is not None and command.startswith("/change ")):
-            self.show_change_list(command.removeprefix("/change").strip())
-        elif command == "/select" or (command is not None and command.startswith("/select ")):
-            self.show_select_list(command.removeprefix("/select").strip())
-        elif command is not None and self._looks_like_command(command):
-            self.show_command_list(command)
-        else:
-            self.hide_command_list()
-
-    @on(OptionList.OptionSelected, "#command-list")
-    def on_command_selected(self, event: OptionList.OptionSelected) -> None:
-        command = event.option.id
-        if command is None:
-            return
-
-        if command.startswith("/select "):
-            promptarea = self.prompt_area
-            promptarea.load_text_at_end(command)
-            promptarea.focus()
-            self.hide_command_list()
-            return
-
-        promptarea = self.prompt_area
-        promptarea.load_text_at_end(command)
-        promptarea.focus()
-        self.hide_command_list()
-
-    def complete_command_hint(self) -> bool:
-        command_list = self.command_list
-        if not command_list.display or not command_list.option_count:
-            return False
-
-        option = command_list.highlighted_option or command_list.get_option_at_index(0)
-        command = option.id
-        if command is None:
-            return False
-
-        if command.startswith("/select "):
-            promptarea = self.prompt_area
-            promptarea.load_text_at_end(command)
-            promptarea.focus()
-            self.hide_command_list()
-            return True
-
-        promptarea = self.prompt_area
-        promptarea.load_text_at_end(command)
-        promptarea.focus()
-        self.hide_command_list()
-        return True
-
-    def show_command_list(self, query: str = "/") -> None:
-        command_list = self.command_list
-        options = [
-            Option(command, id=command)
-            for command in self.commands
-            if command.startswith(query)
-        ]
-        command_list.set_options(options)
-        command_list.display = bool(options)
-
-    def show_chat_list(self, query: str = "") -> None:
-        command_list = self.command_list
-        options = [
-            Option(path.stem, id=f"/load {path.name}")
-            for path in self.session_controller.list_chats()
-            if path.name.startswith(query)
-        ]
-        command_list.set_options(options)
-        command_list.display = bool(options)
-
-    def show_change_list(self, query: str = "") -> None:
-        """Build model-field or model-key suggestions for the change command."""
-        fields = {
-            "context_model": ModelRegistery.context_models,
-            "embed_model":  ModelRegistery.embed_models,
-            "toolgen_model": ModelRegistery.toolgen_models,
-        }
-        command_list = self.command_list
-        parts = query.split()
-
-        if not parts or (len(parts) == 1 and not query.endswith(" ") and parts[0] not in fields):
-            options = [
-                Option(field, id=f"/change {field}")
-                for field in fields
-                if not parts or field.startswith(parts[0])
-            ]
-        else:
-            field = parts[0]
-            keys = fields.get(field, {})
-            key_query = parts[1] if len(parts) > 1 else ""
-            options = [
-                Option(key, id=f"/change {field} {key}")
-                for key in keys
-                if key.startswith(key_query)
-            ]
-
-        command_list.set_options(options)
-        command_list.display = bool(options)
-
-    def show_select_list(self, query: str = "") -> None:
-        """Build a bounded workspace-relative file and directory picker."""
+    def _get_select_suggestions(self, query: str = "") -> list[str]:
         root = Path.cwd().resolve()
         query = query.strip()
         requested = (root / query).resolve() if query else root
@@ -646,36 +608,36 @@ class R4TUI(App):
             prefix = requested.name
 
         if not parent.is_dir():
-            self.command_list.set_options([])
-            self.command_list.display = False
-            return
+            return []
 
         options = []
         for path in sorted(parent.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())):
             if prefix and not path.name.startswith(prefix):
                 continue
-
             relative = path.relative_to(root).as_posix()
             if path.is_dir():
-                options.append(Option(f"{relative}/", id=f"/select {relative}/"))
+                options.append(f"/select {relative}/")
             elif path.is_file() and path.suffix:
-                options.append(Option(relative, id=f"/select {relative}"))
+                options.append(f"/select {relative}")
+        return options
 
-        command_list = self.command_list
-        command_list.set_options(options)
-        command_list.display = bool(options)
+    def _handle_select_command(self, path_text: str) -> None:
+        if self.select_path(path_text):
+            self.prompt_area.clear()
+            self.hide_command_list()
 
     def select_path(self, path_text: str) -> bool:
         root = Path.cwd().resolve()
         selected = (root / path_text).resolve()
-
         try:
             relative = selected.relative_to(root).as_posix()
         except ValueError:
             return False
 
         if selected.is_dir():
-            self.show_select_list(relative + "/")
+            options = self._get_select_suggestions(relative + "/")
+            self.command_list.set_options([Option(opt, id=opt) for opt in options])
+            self.command_list.display = bool(options)
             return False
         if not selected.is_file() or not selected.suffix:
             return False
@@ -688,7 +650,6 @@ class R4TUI(App):
     def change_provider(self, change: str) -> None:
         parts = change.split()
         if len(parts) != 2:
-            self.show_change_list(change)
             return
 
         field, key = parts
@@ -696,10 +657,10 @@ class R4TUI(App):
             "context_model": self.handler.r4.provider.change_context_model,
             "embed_model": self.handler.r4.provider.change_embed_model,
             "toolgen_model": self.handler.r4.provider.change_tool_model,
+            "system_prompt": self.handler.r4.provider.change_system_prompt
         }
         setter = fields.get(field)
         if setter is None:
-            self.show_change_list(change)
             return
 
         promptarea = self.prompt_area
@@ -720,6 +681,45 @@ class R4TUI(App):
             exit_on_error=False,
         )
         self._update_model_banner()
+        if field == "system_prompt":
+            self.update_log()
+
+    @on(TextArea.Changed, "#prompt-area")
+    def on_prompt_changed(self, event: TextArea.Changed) -> None:
+        text = event.text_area.text
+        if not text.startswith("/"):
+            self.hide_command_list()
+            return
+
+        suggestions = self.command_runner.get_suggestions(text)
+        options = [Option(item, id=item) for item in suggestions]
+        self.command_list.set_options(options)
+        self.command_list.display = bool(options)
+
+    @on(OptionList.OptionSelected, "#command-list")
+    def on_command_selected(self, event: OptionList.OptionSelected) -> None:
+        command = event.option.id
+        if command is None:
+            return
+
+        promptarea = self.prompt_area
+        promptarea.load_text_at_end(command)
+        promptarea.focus()
+
+    def complete_command_hint(self) -> bool:
+        command_list = self.command_list
+        if not command_list.display or not command_list.option_count:
+            return False
+
+        option = command_list.highlighted_option or command_list.get_option_at_index(0)
+        command = option.id
+        if command is None:
+            return False
+
+        promptarea = self.prompt_area
+        promptarea.load_text_at_end(command)
+        promptarea.focus()
+        return True
 
     def hide_command_list(self) -> None:
         self.command_list.display = False
@@ -731,13 +731,10 @@ class R4TUI(App):
             panel.display = False
             return
 
-        panel.update(
-            "\n".join(f"+{path}" for path in self._selected_files)
-        )
+        panel.update("\n".join(f"+{path}" for path in self._selected_files))
         panel.display = True
 
     def update_log(self, pending_message: Message | None = None) -> None:
-        """Render the current agent sequence through the message projection module."""
         if self.handler is None:
             return
         chatlog = self.chat_log
@@ -747,7 +744,7 @@ class R4TUI(App):
             pending_message,
         )
 
-    
+
 if __name__ == "__main__":
     registery_sets, prompts = UsageRegisteryLoader.load()
     provider = ProviderManager(registery_sets["coder"])

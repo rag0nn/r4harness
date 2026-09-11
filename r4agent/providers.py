@@ -195,21 +195,27 @@ class ProviderManager:
     def change_system_prompt(self, text:str):
         with self._lock:
             self.registery_set.system_prompt = text
+            logging.info(f"System prompt değiştirildi: {text}")
     
     def change_context_model(self, model_code:str):
         with self._lock:
             self.registery_set.context_model = model_code
             self._context_model = ModelRegistery.build_context_model(model_code)
+            logging.info(f"Context model değiştirildi: {model_code}")
+            
     
     def change_tool_model(self, model_code:str):
         with self._lock:
             self.registery_set.toolgen_model = model_code
             self._tool_model = ModelRegistery.build_toolgen_model(model_code)
+            logging.info(f"Tool model değiştirildi: {model_code}")
+            
         
     def change_embed_model(self, model_code:str):
         with self._lock:
             self.registery_set.embed_model = model_code
             self._embed_model = ModelRegistery.build_embed_model(model_code)
+            logging.info(f"Embed model değiştirildi: {model_code}")
             if self._dbclient is not None:
                 self._dbclient.close()
                 self._dbclient = None
@@ -218,4 +224,5 @@ class ProviderManager:
         with self._lock:
             self.registery_set.whisper_model = model_code
             self._whisper_model = ModelRegistery.build_whisper_model(model_code)
+            logging.info(f"Whisper model değiştirildi: {model_code}")
     
