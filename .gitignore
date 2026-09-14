@@ -13,6 +13,7 @@ __pycache__/
 application/cli/chats/
 r4agent/rag/db/
 /r4agent/application/cli/chats/*
+r4agent/weights/*
 
 *temp.py
 *.log

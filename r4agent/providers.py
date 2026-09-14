@@ -32,6 +32,7 @@ read_env(Path(__file__).parent / ".env")
 class ModelRegistery:
     context_models: dict[str, tuple[type[BaseContextGenerationModel], type[BaseModel]]] = {
         "ollama-qwen3.5:4b": (OllamaGenModel, OllamaConfig(think=True)),
+        "ollama-qwen3:0.6b": (OllamaGenModel, OllamaConfig(think=True)),
         "gemini": (GeminiGenModel, GeminiGenConfig()),
     }
     toolgen_models: dict[str, tuple[type[BaseToolGenerationModel], type[BaseModel]]] = {
@@ -95,7 +96,7 @@ class ModelRegistery:
         return client
 
 class RegisterySet(BaseModel):
-    context_model : str = "ollama-qwen3.5:4b"
+    context_model : str = "ollama-qwen3:0.6b"
     toolgen_model : str = "ollama"
     embed_model : str =  "cosmos"
     whisper_model : str = "faster-whisper"

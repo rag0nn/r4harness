@@ -14,6 +14,13 @@
             "whisper_model" : "faster-whisper",
             "system_prompt" : "Sen bir yapay zeka kod programcısının. İstenen kod çıktılarını en net ve gerekli şekliyle ver."
         
+        },
+        "tiny" : {
+            "context_model":  "ollama-qwen3:0.6b",
+            "toolgen_model" : "ollama",
+            "embed_model" : "cosmos",
+            "whisper_model" : "faster-whisper",
+            "system_prompt" : "Sen bir yapay zeka asistanısın. İstenen çıktıları en net ve gerekli şekliyle ver, yorum katma."
         }
     },
     "prompts" : {

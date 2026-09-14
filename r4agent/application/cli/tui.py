@@ -105,7 +105,7 @@ class R4TUI(App):
         registery_sets, prompts = UsageRegisteryLoader.load()
         self.usage_registery_sets = registery_sets
         self.usage_prompts = prompts
-        self.usage_chosen_registery_set = "coder"
+        self.usage_chosen_registery_set = "tiny"
         self.stream = True
         self.handler: Handler | None = None
         self._banner_offset = 0
