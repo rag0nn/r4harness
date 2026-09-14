@@ -1,4 +1,8 @@
+from typing import Optional
+
 from pydantic import BaseModel, computed_field
+
+from ..struct.metrics import PerformanceMetrics
 
 # == Constructions ==========================
 
@@ -61,9 +65,10 @@ class QueryResponse(BaseModel):
     error: ErrorDetail | None = None
 
 class QueryStreamChunk(BaseModel):
-    """SSE stream'inde yalnızca yeni content ve thinking parçalarını taşır."""
+    """SSE stream'inde yalnızca yeni content/thinking parçalarını ve metrik paketini taşır."""
     content: str
     thinking: str
+    metrics: Optional[PerformanceMetrics] = None
     
 # rag_add_content
 class RagAddContentRequest(BaseModel):

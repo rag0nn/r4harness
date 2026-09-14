@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from threading import Event
+from typing import Callable
 
 from textual.worker import Worker
+
+from r4agent.struct.metrics import PerformanceMetrics
 
 
 class QueryController:
@@ -20,7 +23,14 @@ class QueryController:
         self.active_event = event
         return self.generation, event
 
-    def run(self, handler, prompt: str, generation: int, cancel_event: Event):
+    def run(
+        self,
+        handler,
+        prompt: str,
+        generation: int,
+        cancel_event: Event,
+        on_metrics: Callable[[PerformanceMetrics], None] | None = None,
+    ):
         """Consume an agent stream until it completes or cancellation is requested."""
         stream = handler.r4.send(prompt)
         try:
@@ -28,6 +38,8 @@ class QueryController:
             for item in stream:
                 if cancel_event.is_set() or generation in self.cancelled_generations:
                     return None
+                if on_metrics is not None and len(item) > 2 and item[2] is not None:
+                    on_metrics(item[2])
                 result.append(item)
             return result
         finally:

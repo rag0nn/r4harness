@@ -24,6 +24,8 @@ from .utils import read_env
 from pathlib import Path
 from pydantic import BaseModel
 
+from .struct.metrics import PerformanceMetrics
+
 
 read_env(Path(__file__).parent / ".env")
 
@@ -93,7 +95,7 @@ class ModelRegistery:
         return client
 
 class RegisterySet(BaseModel):
-    context_model : str = "ollama"
+    context_model : str = "ollama-qwen3.5:4b"
     toolgen_model : str = "ollama"
     embed_model : str =  "cosmos"
     whisper_model : str = "faster-whisper"
@@ -117,6 +119,40 @@ class UsageRegisteryLoader:
             
         return registery_sets, prompts_dict
 
+
+class ModelTelemetry:
+    """Provider scope'unda model bazlı birikimli token/TPS/TTFT sayacı."""
+
+    def __init__(self, model: str):
+        self.model = model
+        self.requests: int = 0
+        self.total_prompt_tokens: int = 0
+        self.total_completion_tokens: int = 0
+        self.total_ttft_ms: float = 0.0
+        self.total_output_tps: float = 0.0
+        self.total_tool_duration_ms: float = 0.0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.total_prompt_tokens + self.total_completion_tokens
+
+    @property
+    def avg_ttft_ms(self) -> float:
+        return round(self.total_ttft_ms / self.requests, 2) if self.requests else 0.0
+
+    @property
+    def avg_output_tps(self) -> float:
+        return round(self.total_output_tps / self.requests, 2) if self.requests else 0.0
+
+    def record(self, metrics: PerformanceMetrics) -> None:
+        """Bir isteğin metriklerini birikimli toplamlara ekler."""
+        self.requests += 1
+        self.total_prompt_tokens += metrics.prompt_tokens
+        self.total_completion_tokens += metrics.completion_tokens
+        self.total_ttft_ms += metrics.ttft_ms
+        self.total_output_tps += metrics.output_tps
+        self.total_tool_duration_ms += metrics.tool_duration_ms
+
 class ProviderManager:
     
     def __init__(self, registery_set: RegisterySet | None):
@@ -130,6 +166,9 @@ class ProviderManager:
         self._whisper_model: FasterWhisper = None
         
         self._dbclient: RAGClient = None
+
+        # Model bazlı birikimli telemetry sayaçları (provider scope)
+        self.telemetry: dict[str, ModelTelemetry] = {}
 
     @property
     def system_prompt(self):
@@ -191,6 +230,18 @@ class ProviderManager:
             self._embed_model = None
             self._dbclient = None
             self._whisper_model = None
+
+    def record_telemetry(self, metrics: PerformanceMetrics) -> None:
+        """Aktif context modelinin metriklerini model-bazlı toplamlara işler."""
+        with self._lock:
+            model = self.registery_set.context_model
+            usage = self.telemetry.setdefault(model, ModelTelemetry(model=model))
+            usage.record(metrics)
+            logging.info(
+                f"[Telemetry] {model} => istek: {usage.requests}, "
+                f"toplam token: {usage.total_tokens}, "
+                f"ort. TTFT: {usage.avg_ttft_ms}ms, ort. TPS: {usage.avg_output_tps}"
+            )
         
     def change_system_prompt(self, text:str):
         with self._lock:

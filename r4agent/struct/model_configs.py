@@ -14,7 +14,8 @@ type gemini_think_level = Literal["minimal", "low", "medium", "high"]
 class OllamaConfig(BaseConfig):
     model : str = "qwen3.5:4b"
     think : bool = False
-    
+    context_window : int = 8192
+
 class GeminiGenConfig(BaseConfig):
     model : str = "gemini-3.6-flash"
     stream : bool = True
@@ -22,6 +23,7 @@ class GeminiGenConfig(BaseConfig):
     seed : int = 42
     thinking_level : gemini_think_level = "minimal"
     max_output_tokens : int = 1024
+    context_window : int = 1048576
     
 class GeminiEmbedConfig(BaseConfig):
     model : str = "gemini-embedding-2"

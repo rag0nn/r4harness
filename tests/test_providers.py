@@ -22,7 +22,7 @@ class TestUsageRegisteryLoader:
 @pytest.fixture
 def manager():
     rset = RegisterySet(
-        context_model="ollama",
+        context_model="ollama-qwen3.5:4b",
         embed_model="cosmos",
         system_prompt="İlk test promptu",
         whisper_model="faster-whisper",

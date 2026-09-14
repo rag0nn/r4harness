@@ -23,7 +23,7 @@ while True:
             raise ValueError(e)
         
     last_len = 0
-    for cnt, thk in r.send(inp):
+    for cnt, thk, _m in r.send(inp):
         # cnt'nin string olduğunu varsayarsak, sadece yeni gelen farkı yazdırın
         new_text = cnt[last_len:]
         print(new_text, end='', flush=True)

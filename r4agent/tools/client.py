@@ -122,6 +122,9 @@ class MCPClient:
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join()
         self._loop.close()
+        with self.__class__._lock:
+            if self.__class__._instance is self:
+                self.__class__._instance = None
 
     def get_tools(self):
         """MCP sunucusundaki kullanılabilir tool şemasını getirir."""
@@ -148,4 +151,6 @@ class MCPClient:
 
     def get_insturactions(self):
         """MCP oturumunun model promptuna eklenecek talimatlarını döndürür."""
+        if self._session is None:
+            return None
         return self._session.instructions

@@ -22,5 +22,5 @@
 - ~~tui provider seçme, yeniden oluşturma yani biraz daha üst yapıdan tekrardan inşa etme gibi.~~
 - ~~tui rag için tui'den doküman ekleme~~
 - ~~enter, sağ sol  bindleri ekle~~
-- tui token/sn gibi metriklerin eklenmesi
+-~~ tui token/sn gibi metriklerin eklenmesi~~
 - farklı konfigüre model kombinasyon performans testleri

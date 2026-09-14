@@ -62,12 +62,13 @@ def create_app() -> FastAPI:
         if app.state.r4.stream:
             # SSE Stream
             def generate():
-                """Agent delta'larını SSE paketlerine dönüştürür."""
+                """Agent delta'larını metrik paketiyle birlikte SSE paketlerine dönüştürür."""
                 request_agent = R4Agent(stream=True)
-                for content_delta, thinking_delta in request_agent.send(request.content):
+                for content_delta, thinking_delta, metrics in request_agent.send(request.content):
                     chunk = QueryStreamChunk(
                         content=content_delta,
                         thinking=thinking_delta,
+                        metrics=metrics,
                     )
                     yield f"data: {chunk.model_dump_json()}\n\n"
 
@@ -78,7 +79,7 @@ def create_app() -> FastAPI:
                     """Tek request'e ait agent çıktısını blocking thread'de toplar."""
                     request_agent = R4Agent(stream=False)
                     full_content, full_thinking = "", ""
-                    for content_delta, thinking_delta in request_agent.send(request.content):
+                    for content_delta, thinking_delta, _ in request_agent.send(request.content):
                         full_content += content_delta
                         full_thinking += thinking_delta
                     return full_content, full_thinking

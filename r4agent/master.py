@@ -3,8 +3,9 @@ from .tools.client import MCPClient
 from .providers import ProviderManager, RegisterySet
 from .utils import log_execution_time
 
-from typing import Generator
+from typing import Generator, Optional
 from pathlib import Path
+from time import perf_counter
 import logging
 
 class R4Agent:
@@ -50,8 +51,9 @@ class R4Agent:
             result_text = self.mcp_client.call_tool(name, args or {})
             self.message_sequnce.add(Message(role=Roles.tool, content=result_text))
 
-    def _run_tool_loop(self) -> None:
-        """Araç seçimini sınırlı turda tekrarlar ve sonsuz tool döngüsünü engeller."""
+    def _run_tool_loop(self) -> float:
+        """Araç seçimini sınırlı turda tekrarlar; tüm döngünün süresini ms olarak döndürür."""
+        tool_start = perf_counter()
         for round_number in range(self.MAX_TOOL_ROUNDS):
             tool_calls_model, tool_calls_mcp = self.provider.tool_model.send(
                 self.message_sequnce,
@@ -59,7 +61,7 @@ class R4Agent:
             )
 
             if not tool_calls_mcp:
-                return
+                return (perf_counter() - tool_start) * 1000
 
             self.message_sequnce.add(
                 Message(
@@ -74,21 +76,58 @@ class R4Agent:
             "Tool çağrısı azami tur sayısına ulaştı: %s",
             self.MAX_TOOL_ROUNDS,
         )
-            
-    def send(self, query:str) ->Generator[tuple[str, str], None,None]:
-        """Sorguyu geçmişe ekler, tool döngüsünü çalıştırır ve model çıktısını stream eder."""
+
+        return (perf_counter() - tool_start) * 1000
+
+    def send(self, query:str) ->Generator[tuple[str, str, Optional[PerformanceMetrics]], None, None]:
+        """Sorguyu geçmişe ekler, tool döngüsünü çalıştırır ve model çıktısını metriklerle stream eder.
+
+        Her parça (content, thinking, metrics) üçlüsü olarak yield edilir; metrics
+        duvar saati TTFT'sini ve canlı output_tps/token sayılarını taşır.
+        """
         self.message_sequnce.add(Message(role=Roles.user, content=query))
-        self._run_tool_loop()
-        
+        send_start = perf_counter()
+        tool_duration_ms = self._run_tool_loop()
+
         full_content, full_thinking = "", ""
-        for cnt, tnk in self.provider.context_model.send(
+        first_chunk_at: float | None = None
+        first_chunk_ttft_ms = 0.0
+        final_metrics: PerformanceMetrics | None = None
+
+        for cnt, tnk, chunk_metrics in self.provider.context_model.send(
                 self.message_sequnce,
                 stream=self.stream):
+            now = perf_counter()
+            if first_chunk_at is None:
+                first_chunk_at = now
+                first_chunk_ttft_ms = (now - send_start) * 1000
+            elif chunk_metrics is not None and chunk_metrics.completion_tokens:
+                chunk_metrics.output_tps = round(
+                    chunk_metrics.completion_tokens / (now - first_chunk_at), 2)
+
             full_content += cnt
             full_thinking += tnk
-            yield cnt, tnk
 
-        self.message_sequnce.add(Message(role=Roles.assistant, content=full_content))
+            if chunk_metrics is not None:
+                chunk_metrics.ttft_ms = first_chunk_ttft_ms
+            final_metrics = chunk_metrics
+            yield cnt, tnk, chunk_metrics
+
+        if final_metrics is None:
+            final_metrics = PerformanceMetrics()
+        final_metrics.ttft_ms = first_chunk_ttft_ms
+        final_metrics.tool_duration_ms = tool_duration_ms
+        if self.stream and first_chunk_at is not None and final_metrics.completion_tokens:
+            elapsed = perf_counter() - first_chunk_at
+            if elapsed > 0:
+                final_metrics.output_tps = round(final_metrics.completion_tokens / elapsed, 2)
+
+        self.message_sequnce.add(Message(
+            role=Roles.assistant,
+            content=full_content,
+            metrics=final_metrics,
+        ))
+        self.provider.record_telemetry(final_metrics)
 
     def load_messages(self, path: str | Path):
         """

@@ -24,7 +24,7 @@ content = " ".join([w for w in words])
 
 last_len = 0
 
-for cnt, thk in r4.send(content):
+for cnt, thk, _m in r4.send(content):
     # cnt'nin string olduğunu varsayarsak, sadece yeni gelen farkı yazdırın
     new_text = cnt[last_len:]
     print(new_text, end='', flush=True)

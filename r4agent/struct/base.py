@@ -4,7 +4,9 @@ import logging
 from pathlib import Path
 from datetime import datetime
 import json
-from typing import Generator, Any, List, Tuple, Union
+from typing import Generator, Any, List, Tuple, Union, Optional
+
+from .metrics import PerformanceMetrics
 
 
 
@@ -22,9 +24,11 @@ class Message:
     role:str
     content:str
     tool_calls: list | None = None
+    metrics: Optional[PerformanceMetrics] = None
 
     def to_dict(self):
         result = {k: v for k, v in asdict(self).items() if v is not None}
+        result.pop("metrics", None)  # metrikler model wire formatına karışmaz
         if result.get("tool_calls"):
             result["tool_calls"] = [
                 tc.model_dump() if hasattr(tc, "model_dump") else tc
@@ -36,29 +40,43 @@ class Message:
         return f"role: {self.role} content: {self.content} tool_calls: {self.tool_calls}"
         
 class MessageSequence:
-    
+
     def __init__(self, initial_system_prompt:str):
         self.sequence:list[Message] = [
             Message(role=Roles.system, content=initial_system_prompt)
         ]
-        
+        self.live_metrics: PerformanceMetrics = PerformanceMetrics()
+
     def __len__(self):
         return len(self.sequence)
-        
+
     def __str__(self):
         return "\n\n".join([f"role: {e.role} content: {f"{e.content[:20]}..." if e.content else "-"} tools_calls: {f"{e.tool_calls[:10]}..." if e.tool_calls else "-"}" for e in self.sequence])
 
     def add(self, message:Message):
-        """Mesajı konuşma sırasına ekler ve debug kaydı üretir."""
+        """Mesajı konuşma sırasına ekler, metrik taşıyorsa canlı bağlamı günceller."""
         self.sequence.append(message)
+        if message.metrics is not None:
+            self.live_metrics = message.metrics
         logging.info(f"[{self.__class__.__name__}] Added new message => {message}")
-        
+
     def reset(self, system_prompt:str = ""):
         """Konuşmayı başlangıç system mesajını koruyarak temizler."""
         self.sequence = [
             Message(role=Roles.system, content=system_prompt)
         ]
+        self.live_metrics = PerformanceMetrics()
         logging.info(f"[{self.__class__.__name__}] Mesaj kuyruğu başarıyla temizlendi")
+
+    @property
+    def total_context_tokens(self) -> int:
+        """Aktif sohbetin son yanıttaki toplam bağlam token büyüklüğü."""
+        return self.live_metrics.total_context_tokens
+
+    @property
+    def context_usage_pct(self) -> float:
+        """Aktif sohbetin bağlam penceresi doluluk oranı (%)."""
+        return self.live_metrics.context_usage_pct
         
     def get_as_dicts(self)->list[dict]:
         return [m.to_dict() for m in self.sequence]
@@ -110,8 +128,8 @@ class BaseContextGenerationModel(ABC):
         stream: bool = False, 
         tools: list | None = None
     ) -> Union[
-        Tuple[str, str], 
-        Generator[Tuple[str, str], None, None
+        Tuple[str, str, Optional[PerformanceMetrics]], 
+        Generator[Tuple[str, str, Optional[PerformanceMetrics]], None, None
     ]]:
         """Chats with generation model
         Inputs:
@@ -122,6 +140,11 @@ class BaseContextGenerationModel(ABC):
             message (str): Cevap mesajı içeriği
             thinking (str): Eğer model thinking yaptıysa onun içeriği 
             tool calls (tuple[str,dict]): name ve paramsları tutan listeyi döndürür.
+            metrics (PerformanceMetrics | None): Backend wire yanıtındaki (örn. Ollama
+                eval_count/prompt_eval_duration, Gemini usage_metadata) token ve süre
+                bilgilerinden adaptörün ürettiği metrik nesnesi. Adaptör yalnızca kendi
+                backend'inin verdiği değerleri doldurur; TTFT/TPS gibi duvar saati
+                ölçümleri orkestrasyon katmanının (R4Agent) sorumluluğundadır.
         """
         
 class BaseToolGenerationModel(ABC):

@@ -1,4 +1,4 @@
-from typing import Generator, Tuple, List, Any
+from typing import Generator, Tuple, List, Any, Optional
 from ollama import Client, ChatResponse
 import logging
 
@@ -22,7 +22,7 @@ class OllamaGenModel(BaseContextGenerationModel):
         self, 
         message_sequence: MessageSequence, 
         stream: bool = False, 
-    ) -> Generator[Tuple[str, str], None, None]:
+    ) -> Generator[Tuple[str, str, Optional[PerformanceMetrics]], None, None]:
         response = self.client.chat(
             model=self.config.model,
             messages=message_sequence.get_as_dicts(),
@@ -39,13 +39,32 @@ class OllamaGenModel(BaseContextGenerationModel):
             response_thinking = response.message.thinking or ""
             
             logging.info(f"Cevap başarıyla oluşturuldu. {response_message[:10]}...")
-            yield response_message, response_thinking
+            yield response_message, response_thinking, self._metrics_from(response)
 
         else:
             for chunk in response:
                 response_message = chunk.message.content or ""
                 response_thinking = chunk.message.thinking or ""
-                yield response_message, response_thinking
+                yield response_message, response_thinking, self._metrics_from(chunk)
+
+    def _metrics_from(self, response: ChatResponse) -> Optional[PerformanceMetrics]:
+        """Ollama wire yanıtındaki token/durasyon alanlarından metrik üretir."""
+        prompt_eval_count = getattr(response, "prompt_eval_count", None) or 0
+        eval_count = getattr(response, "eval_count", None) or 0
+        prompt_eval_duration_ns = getattr(response, "prompt_eval_duration", None) or 0
+        eval_duration_ns = getattr(response, "eval_duration", None) or 0
+
+        ttft_ms = (prompt_eval_duration_ns / 1_000_000) if prompt_eval_duration_ns else 0.0
+        output_tps = (eval_count / (eval_duration_ns / 1_000_000_000)) if eval_duration_ns else 0.0
+
+        return PerformanceMetrics(
+            ttft_ms=round(ttft_ms, 2),
+            output_tps=round(output_tps, 2),
+            prompt_tokens=prompt_eval_count,
+            completion_tokens=eval_count,
+            total_context_tokens=prompt_eval_count,
+            max_context_window=self.config.context_window,
+        )
 
 class OllamaToolGenModel(BaseToolGenerationModel):
     
@@ -103,7 +122,7 @@ class GeminiGenModel(BaseContextGenerationModel):
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY")) # ENV DOSYASI BAŞKA BİRYERDE INIT EDİLİR
         self.config = config
 
-    def send(self, message_sequence: MessageSequence, stream=False) -> Generator[Tuple[str, str], None, None]:
+    def send(self, message_sequence: MessageSequence, stream=False) -> Generator[Tuple[str, str, Optional[PerformanceMetrics]], None, None]:
         # Gemini 2.x / Official GenAI SDK standart formatı
         contents = []
         for msg in message_sequence.get_as_dicts():
@@ -135,7 +154,7 @@ class GeminiGenModel(BaseContextGenerationModel):
                 }
             )
             for chunk in response:
-                yield chunk.text or "", ""
+                yield chunk.text or "", "", self._metrics_from(chunk)
         else:
             response = self.client.models.generate_content(
                 model=self.config.model,
@@ -147,8 +166,22 @@ class GeminiGenModel(BaseContextGenerationModel):
                     "seed": self.config.seed,
                 }
             )
-            yield response.text or "", ""
-            
+            yield response.text or "", "", self._metrics_from(response)
+
+    def _metrics_from(self, response) -> Optional[PerformanceMetrics]:
+        """Gemini usage_metadata alanlarından token/bağlam metrikleri üretir."""
+        usage = getattr(response, "usage_metadata", None)
+        prompt_tokens = getattr(usage, "prompt_token_count", None) or 0
+        completion_tokens = getattr(usage, "candidates_token_count", None) or 0
+        total_tokens = getattr(usage, "total_token_count", None) or 0
+
+        return PerformanceMetrics(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_context_tokens=total_tokens or prompt_tokens,
+            max_context_window=self.config.context_window,
+        )
+
 class GeminiEmbedding(BaseEmbeddingGenerationModel):
     
     @log_execution_time

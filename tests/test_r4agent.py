@@ -14,7 +14,7 @@ class TestR4Agent:
     def test_send(self, r4:R4Agent):
         response = r4.send("Türkiyenin ilk cumhurbaşkanı kimdir?")
         content, thinking = "", ""
-        for cnt, thk in response:
+        for cnt, thk, _m in response:
             content += cnt
             thinking += thk
             
