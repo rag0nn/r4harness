@@ -11,6 +11,7 @@ from textual.worker import Worker, WorkerState
 from r4agent import Message, R4Agent
 from r4agent.providers import ModelRegistery, ProviderManager, UsageRegisteryLoader
 from r4agent.struct.base import Roles
+from r4agent.struct.metrics import PerformanceMetrics
 
 import os
 
@@ -110,6 +111,7 @@ class R4TUI(App):
         self._banner_offset = 0
         self._query_waiting = False
         self._query_status_offset = 0
+        self._live_metrics: PerformanceMetrics | None = None
         self._query_worker: Worker | None = None
         self.query_controller = QueryController()
         self._selected_files: list[Path] = []
@@ -218,6 +220,8 @@ class R4TUI(App):
         embed = self.handler.r4.provider.registery_set.embed_model
         whisper = self.handler.r4.provider.registery_set.whisper_model
         base = f"CG: {context}   TG: {tool}   EG: {embed}    W: {whisper}"
+        metrics = self._live_metrics or PerformanceMetrics()
+        base = f"{base}   |   {self._format_metrics(metrics)}"
         repeat = base + "   " + base + "   " + base
         window = 80
         start = self._banner_offset % len(base)
@@ -240,6 +244,30 @@ class R4TUI(App):
         status = self.query_status_label
         status.update(frames[self._query_status_offset])
         self._query_status_offset = (self._query_status_offset + 1) % len(frames)
+
+    def _format_metrics(self, metrics: PerformanceMetrics) -> str:
+        """Metrik paketini banner metnine dönüştürür."""
+        tps = f"{metrics.output_tps:.0f} tok/s" if metrics.output_tps else "— tok/s"
+        max_k = metrics.max_context_window // 1000
+        context = (
+            f"%{metrics.context_usage_pct:.0f} ({metrics.total_context_tokens // 1000}k/{max_k}k)"
+            if metrics.total_context_tokens
+            else f"%0 (0/{max_k}k)"
+        )
+        ttft = f"TTFT: {metrics.ttft_ms:.0f}ms" if metrics.ttft_ms else "TTFT: —"
+        return f"{tps} | Context: {context} | {ttft}"
+
+    def _set_live_metrics(self, metrics: PerformanceMetrics) -> None:
+        """En güncel metrik paketini banner'a yansıtır."""
+        self._live_metrics = metrics
+        self._update_model_banner()
+
+    def _update_live_metrics(self, metrics: PerformanceMetrics) -> None:
+        """Worker thread'ten gelen canlı metrik paketlerini main thread'e aktarır."""
+        try:
+            self.call_from_thread(self._set_live_metrics, metrics)
+        except RuntimeError:
+            self._set_live_metrics(metrics)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -492,18 +520,29 @@ class R4TUI(App):
             self._query_waiting = False
             self.query_controller.finish()
             result = event.worker.result
+            final_metrics = None
             if result:
                 self._ensure_response_message(result[-1][0])
+                last = self.handler.r4.message_sequnce.sequence[-1]
+                if last.role == Roles.assistant:
+                    final_metrics = last.metrics
+            if final_metrics is not None:
+                self._live_metrics = final_metrics
+                self._update_model_banner()
             self.query_status_label.display = False
             self.update_log()
         elif event.state is WorkerState.CANCELLED:
             self._query_waiting = False
             self.query_controller.finish()
+            self._live_metrics = None
+            self._update_model_banner()
             self.query_status_label.update("Sorgu durduruldu")
             self.query_status_label.display = True
         elif event.state is WorkerState.ERROR:
             self._query_waiting = False
             self.query_controller.finish()
+            self._live_metrics = None
+            self._update_model_banner()
             self.query_status_label.update(f"Sorgu hatası: {event.worker.error}")
             self.query_status_label.display = True
 
@@ -530,6 +569,7 @@ class R4TUI(App):
         self.hide_command_list()
         self._query_waiting = True
         self._query_status_offset = 0
+        self._live_metrics = None
         query_generation, cancel_event = self.query_controller.begin()
         query_prompt = self._build_query_prompt(prompt)
         self._selected_files.clear()
@@ -543,6 +583,7 @@ class R4TUI(App):
                 query_prompt,
                 query_generation,
                 cancel_event,
+                on_metrics=self._update_live_metrics,
             )
 
         self._query_worker = self.run_worker(
@@ -565,6 +606,8 @@ class R4TUI(App):
             return False
         self._query_waiting = False
         self._query_worker = None
+        self._live_metrics = None
+        self._update_model_banner()
         self.prompt_area.disabled = False
         status = self.query_status_label
         status.update("Mesaj iptal edildi")
