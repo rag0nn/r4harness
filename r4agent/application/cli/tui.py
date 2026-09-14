@@ -21,7 +21,7 @@ from .log_controller import LogController
 from .message_renderer import render_messages
 from .query_controller import QueryController
 from .session_controller import SessionController
-from .widgets import ModelBanner, PromptTextArea
+from .widgets import MessageBlock, ModelBanner, PromptTextArea
 
 
 class CommandNode(TypedDict, total=False):
@@ -113,6 +113,8 @@ class R4TUI(App):
         self._query_status_offset = 0
         self._live_metrics: PerformanceMetrics | None = None
         self._query_worker: Worker | None = None
+        self._stream_block: MessageBlock | None = None
+        self._stream_buffer = ""
         self.query_controller = QueryController()
         self._selected_files: list[Path] = []
         self._voice_recording = False
@@ -268,6 +270,24 @@ class R4TUI(App):
             self.call_from_thread(self._set_live_metrics, metrics)
         except RuntimeError:
             self._set_live_metrics(metrics)
+
+    def _on_stream_content(self, content: str) -> None:
+        """Worker thread'ten gelen stream parçalarını main thread'e aktarır."""
+        try:
+            self.call_from_thread(self._append_stream_content, content)
+        except RuntimeError:
+            self._append_stream_content(content)
+
+    def _append_stream_content(self, content: str) -> None:
+        """Anlık stream parçasını chat log'undaki mesaj bloğuna işler."""
+        self._stream_buffer += content
+        block = self._stream_block
+        if block is None:
+            block = MessageBlock(Message(role=Roles.assistant, content=""))
+            self.chat_log.mount(block)
+            self._stream_block = block
+        block.update_content(self._stream_buffer)
+        self.chat_log.scroll_end(animate=False)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -516,6 +536,7 @@ class R4TUI(App):
         promptarea = self.prompt_area
         promptarea.disabled = False
         self._query_worker = None
+        self._stream_block = None
         if event.state is WorkerState.SUCCESS:
             self._query_waiting = False
             self.query_controller.finish()
@@ -570,6 +591,8 @@ class R4TUI(App):
         self._query_waiting = True
         self._query_status_offset = 0
         self._live_metrics = None
+        self._stream_block = None
+        self._stream_buffer = ""
         query_generation, cancel_event = self.query_controller.begin()
         query_prompt = self._build_query_prompt(prompt)
         self._selected_files.clear()
@@ -584,6 +607,7 @@ class R4TUI(App):
                 query_generation,
                 cancel_event,
                 on_metrics=self._update_live_metrics,
+                on_content=self._on_stream_content,
             )
 
         self._query_worker = self.run_worker(

@@ -30,6 +30,7 @@ class QueryController:
         generation: int,
         cancel_event: Event,
         on_metrics: Callable[[PerformanceMetrics], None] | None = None,
+        on_content: Callable[[str], None] | None = None,
     ):
         """Consume an agent stream until it completes or cancellation is requested."""
         stream = handler.r4.send(prompt)
@@ -38,6 +39,10 @@ class QueryController:
             for item in stream:
                 if cancel_event.is_set() or generation in self.cancelled_generations:
                     return None
+                if len(item) > 0:
+                    content = item[0]
+                    if on_content is not None:
+                        on_content(content)
                 if on_metrics is not None and len(item) > 2 and item[2] is not None:
                     on_metrics(item[2])
                 result.append(item)

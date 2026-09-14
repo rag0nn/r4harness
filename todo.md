@@ -23,6 +23,8 @@
 - ~~tui rag için tui'den doküman ekleme~~
 - ~~enter, sağ sol  bindleri ekle~~
 -~~ tui token/sn gibi metriklerin eklenmesi~~
+- ~~streamingü~
+- bağımsız modellerin entegresyanunun yöntemi (cosmos gibi)
 - farklı konfigüre model kombinasyon performans testleri
 - kombinasyonların loglarınınu tutan bir yapı
 - self improvement yapıların araştırılması

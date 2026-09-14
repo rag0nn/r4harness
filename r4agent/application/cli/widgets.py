@@ -103,6 +103,13 @@ class MessageBlock(Container):
         else:
             yield Markdown(self.message.content or "", classes="message-content")
 
+    def update_content(self, content: str) -> None:
+        """Stream sırasında mesaj bloğunun içeriğini yerinde günceller."""
+        if self.message.role == Roles.tool or not self.is_mounted:
+            return
+        self.message.content = content
+        self.query_one(Markdown).update(content or "")
+
 
 class ToolChain(Container):
     """Visually group tool results with the assistant message that follows them."""
