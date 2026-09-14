@@ -48,6 +48,11 @@ class PerformanceMetrics:
         Araç Çağrı Gecikmesi (MCP / External Tool Execution Latency - ms).
         Model bir MCP aracı (ör. find_file, qdrant_search) çalıştırmaya karar verdiğinde,
         bu aracın dış süreçlerde çalışıp yanıtını döndürmesine kadar geçen süredir.
+
+    total_duration_ms (float):
+        Toplam Geçen Süre (Total Elapsed Time - ms).
+        Bir mesajın oluşma süresidir; kullanıcı promptunun gönderildiği andan model
+        yanıtının tamamlandığı ana kadar geçen toplam süreyi ifade eder.
     """
     ttft_ms: float = 0.0
     output_tps: float = 0.0
@@ -56,6 +61,7 @@ class PerformanceMetrics:
     total_context_tokens: int = 0
     max_context_window: int = 8192
     tool_duration_ms: float = 0.0
+    total_duration_ms: float = 0.0
 
     @property
     def context_usage_pct(self) -> float:
@@ -88,6 +94,7 @@ class PerformanceMetrics:
             total_context_tokens=self.total_context_tokens + other.total_context_tokens,
             max_context_window=max(self.max_context_window, other.max_context_window),
             tool_duration_ms=self.tool_duration_ms + other.tool_duration_ms,
+            total_duration_ms=self.total_duration_ms + other.total_duration_ms,
         )
 
     def to_dict(self) -> dict[str, Any]:

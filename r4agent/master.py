@@ -48,8 +48,14 @@ class R4Agent:
             if not name:
                 continue
             logging.info(f"Tool Çağrılıyor: {name}  args: {args}")
+            tool_start = perf_counter()
             result_text = self.mcp_client.call_tool(name, args or {})
-            self.message_sequnce.add(Message(role=Roles.tool, content=result_text))
+            call_duration_ms = (perf_counter() - tool_start) * 1000
+            self.message_sequnce.add(Message(
+                role=Roles.tool,
+                content=result_text,
+                metrics=PerformanceMetrics(tool_duration_ms=round(call_duration_ms, 2)),
+            ))
 
     def _run_tool_loop(self) -> float:
         """Araç seçimini sınırlı turda tekrarlar; tüm döngünün süresini ms olarak döndürür."""
@@ -85,7 +91,8 @@ class R4Agent:
         Her parça (content, thinking, metrics) üçlüsü olarak yield edilir; metrics
         duvar saati TTFT'sini ve canlı output_tps/token sayılarını taşır.
         """
-        self.message_sequnce.add(Message(role=Roles.user, content=query))
+        user_message = Message(role=Roles.user, content=query)
+        self.message_sequnce.add(user_message)
         send_start = perf_counter()
         tool_duration_ms = self._run_tool_loop()
 
@@ -121,6 +128,10 @@ class R4Agent:
             elapsed = perf_counter() - first_chunk_at
             if elapsed > 0:
                 final_metrics.output_tps = round(final_metrics.completion_tokens / elapsed, 2)
+
+        total_duration_ms = round((perf_counter() - send_start) * 1000, 2)
+        final_metrics.total_duration_ms = total_duration_ms
+        user_message.metrics = PerformanceMetrics(total_duration_ms=total_duration_ms)
 
         self.message_sequnce.add(Message(
             role=Roles.assistant,

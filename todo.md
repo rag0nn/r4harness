@@ -24,3 +24,5 @@
 - ~~enter, sağ sol  bindleri ekle~~
 -~~ tui token/sn gibi metriklerin eklenmesi~~
 - farklı konfigüre model kombinasyon performans testleri
+- kombinasyonların loglarınınu tutan bir yapı
+- self improvement yapıların araştırılması

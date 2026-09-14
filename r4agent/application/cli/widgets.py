@@ -50,6 +50,21 @@ class MessageBlock(Container):
         super().__init__(classes=f"message-block {message.role}")
 
     @staticmethod
+    def format_duration(role: str, metrics) -> str:
+        """Mesajın oluşma süresini rol etiketi için okunur metne çevirir.
+
+        Tool mesajlarında tool çağrısının başlangıcından tamamlanmasına kadar geçen
+        süre, diğer mesajlarda promptun modele gönderilmesinden yanıtın gelişine
+        kadar geçen toplam süre gösterilir. Veri yoksa boş döndürür.
+        """
+        if metrics is None:
+            return ""
+        ms = metrics.tool_duration_ms if role == Roles.tool else metrics.total_duration_ms
+        if ms <= 0:
+            return ""
+        return f"{ms / 1000:.2f}s" if ms >= 1000 else f"{ms:.0f}ms"
+
+    @staticmethod
     def format_tool_display(tool_call) -> str:
         """Normalize tuple, dictionary, and SDK tool-call shapes for display."""
         if not tool_call:
@@ -76,7 +91,9 @@ class MessageBlock(Container):
         return f"{name}: {{}}"
 
     def compose(self) -> ComposeResult:
-        yield Label(self.message.role.upper(), classes="message-role")
+        duration = self.format_duration(self.message.role, self.message.metrics)
+        role_label = f"{self.message.role.upper()}   {duration}" if duration else self.message.role.upper()
+        yield Label(role_label, classes="message-role")
         if self.message.role == Roles.tool:
             yield Static(
                 self.format_tool_display(self.tool_call),

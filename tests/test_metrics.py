@@ -1,3 +1,4 @@
+import time
 import types
 
 import pytest
@@ -6,6 +7,7 @@ from r4agent import Message, R4Agent
 from r4agent.struct import Roles, MessageSequence
 from r4agent.struct.metrics import PerformanceMetrics
 from r4agent.backend.structs import QueryStreamChunk
+from r4agent.application.cli.widgets import MessageBlock
 
 
 # == PerformanceMetrics ==========================
@@ -26,11 +28,11 @@ class TestPerformanceMetrics:
     def test_add_cumulative(self):
         a = PerformanceMetrics(
             prompt_tokens=10, completion_tokens=5, ttft_ms=100.0,
-            output_tps=10.0, max_context_window=4096,
+            output_tps=10.0, max_context_window=4096, total_duration_ms=200.0,
         )
         b = PerformanceMetrics(
             prompt_tokens=10, completion_tokens=15, ttft_ms=50.0,
-            output_tps=30.0, max_context_window=8192,
+            output_tps=30.0, max_context_window=8192, total_duration_ms=300.0,
         )
         c = a + b
         assert c.prompt_tokens == 20
@@ -40,6 +42,7 @@ class TestPerformanceMetrics:
         assert c.total_context_tokens == 0
         assert c.output_tps == 20.0
         assert c.max_context_window == 8192
+        assert c.total_duration_ms == 500.0
 
     def test_add_invalid_type(self):
         m = PerformanceMetrics()
@@ -240,3 +243,76 @@ class TestR4AgentNonStreamMetrics:
         assert len(collected) == 1
         assert collected[0][2].output_tps == 12.5
         assert collected[0][2].ttft_ms > 0
+
+
+# == Mesaj oluşma süresi (chat log gösterimi) ==========================
+class TestMessageDurationFormat:
+
+    def test_tool_uses_tool_duration(self):
+        metrics = PerformanceMetrics(tool_duration_ms=1500)
+        assert MessageBlock.format_duration(Roles.tool, metrics) == "1.50s"
+
+    def test_assistant_uses_total_duration(self):
+        metrics = PerformanceMetrics(total_duration_ms=840)
+        assert MessageBlock.format_duration(Roles.assistant, metrics) == "840ms"
+
+    def test_user_uses_total_duration(self):
+        metrics = PerformanceMetrics(total_duration_ms=2300)
+        assert MessageBlock.format_duration(Roles.user, metrics) == "2.30s"
+
+    def test_no_metrics_returns_empty(self):
+        assert MessageBlock.format_duration(Roles.assistant, None) == ""
+
+    def test_zero_duration_returns_empty(self):
+        assert MessageBlock.format_duration(Roles.tool, PerformanceMetrics()) == ""
+
+
+class SlowMCPClient(FakeMCPClient):
+    """Tool çağrısını yavaşlatarak ölçülebilir süre üreten MCP stub'ı."""
+
+    def call_tool(self, name, params=None):
+        time.sleep(0.05)
+        return "tool sonucu"
+
+
+class FakeToolModelWithCall:
+    """İlk çağrıda bir tool seçen, sonra boş dönen sahte tool modeli."""
+
+    def __init__(self):
+        self.rounds_left = 1
+
+    def send(self, message_sequence, tools=None):
+        if self.rounds_left > 0:
+            self.rounds_left -= 1
+            return [("fake_tool", {"x": 1})], [("fake_tool", {"x": 1})]
+        return [], []
+
+
+class TestR4AgentMessageDurations:
+
+    def test_user_and_assistant_carry_total_duration(self, stream_agent):
+        r4, _provider = stream_agent
+        list(r4.send("test"))
+        user = r4.message_sequnce.sequence[1]
+        last = r4.message_sequnce.sequence[-1]
+        assert user.role == Roles.user
+        assert user.metrics is not None
+        assert user.metrics.total_duration_ms > 0
+        assert last.role == Roles.assistant
+        assert last.metrics.total_duration_ms > 0
+        assert last.metrics.total_duration_ms >= last.metrics.ttft_ms
+
+    def test_tool_message_carries_call_duration(self, monkeypatch):
+        monkeypatch.setattr("r4agent.master.MCPClient", SlowMCPClient)
+        provider = FakeProvider(FakeGenModel(
+            ["yanıt"],
+            [PerformanceMetrics(completion_tokens=3, total_context_tokens=10)],
+        ))
+        provider.tool_model = FakeToolModelWithCall()
+        r4 = R4Agent(provider=provider, stream=False)
+        list(r4.send("test"))
+        roles = [m.role for m in r4.message_sequnce.sequence]
+        assert roles == [Roles.system, Roles.user, Roles.assistant, Roles.tool, Roles.assistant]
+        tool = r4.message_sequnce.sequence[3]
+        assert tool.metrics is not None
+        assert tool.metrics.tool_duration_ms >= 40
