@@ -31,8 +31,7 @@ class GeminiEmbedConfig(BaseConfig):
     
 class CosmosConfig(BaseConfig):
     model : str = "cosmos"
-    onnx_path:Path = Path(__file__).parent.parent / "weights/cosmos/model.onnx"
-    tokenizer_path: Path = Path(__file__).parent.parent / "weights/cosmos/tokenizer"
+    path:Path = Path(__file__).parent.parent / "weights/cosmos-modernbert-embed"
     vector_size: int = 768
     
 class FasterWishperConfig(BaseConfig):

@@ -31,17 +31,25 @@ read_env(Path(__file__).parent / ".env")
 
 class ModelRegistery:
     context_models: dict[str, tuple[type[BaseContextGenerationModel], type[BaseModel]]] = {
+        "gemini-3.6-flash": (GeminiGenModel, GeminiGenConfig(
+            model="gemini-3.6-flash"
+            )),
         "ollama-qwen3.5:4b": (OllamaGenModel, OllamaConfig(think=True)),
-        "ollama-qwen3:0.6b": (OllamaGenModel, OllamaConfig(think=True)),
-        "gemini": (GeminiGenModel, GeminiGenConfig()),
+        "ollama-qwen3:0.6b": (OllamaGenModel, OllamaConfig(
+            model="qwen3:0.6b",
+            think=True)),
     }
     toolgen_models: dict[str, tuple[type[BaseToolGenerationModel], type[BaseModel]]] = {
-        "ollama": (OllamaToolGenModel, OllamaConfig()),
+        "ollama-qwen3.5:4b": (OllamaToolGenModel, OllamaConfig()),
+        "ollama-qwen3:0.6b": (OllamaToolGenModel, OllamaConfig(
+            model="qwen3:0.6b",
+            )),
     }
     embed_models: dict[str, tuple[type[BaseEmbeddingGenerationModel], type[BaseModel]]] = {
-        "ollama": (OllamaEmbeddingGenModel, OllamaConfig()),
-        "gemini": (GeminiEmbedding, GeminiEmbedConfig()),
-        "cosmos": (CosmosEmbedding, CosmosConfig()),
+        "gemini-embedding-2": (GeminiEmbedding, GeminiEmbedConfig()),
+        "ollama-nomic-embed": (OllamaEmbeddingGenModel, OllamaConfig(
+            model="nomic-embed-text:latest")),
+        "transformers-cosmos-modernbert-embed": (CosmosEmbedding, CosmosConfig()),
     }
     whisper_models: dict[str, tuple[type[FasterWhisper], type[FasterWishperConfig]]] = {
         "faster-whisper": (FasterWhisper, FasterWishperConfig()),
@@ -96,12 +104,12 @@ class ModelRegistery:
         return client
 
 class RegisterySet(BaseModel):
-    context_model : str = "ollama-qwen3:0.6b"
-    toolgen_model : str = "ollama"
-    embed_model : str =  "cosmos"
-    whisper_model : str = "faster-whisper"
-    system_prompt : str = "Sen bir yapay zeka asistanısın. İstenen çıktıları en net ve gerekli şekliyle ver, yorum katma."
-
+    context_model : str
+    toolgen_model : str
+    embed_model : str
+    whisper_model : str
+    system_prompt : str 
+    
 class UsageRegisteryLoader:
         
     USAGE_PATH = Path(__file__).parent / "usage.json"
@@ -254,7 +262,6 @@ class ProviderManager:
             self.registery_set.context_model = model_code
             self._context_model = ModelRegistery.build_context_model(model_code)
             logging.info(f"Context model değiştirildi: {model_code}")
-            
     
     def change_tool_model(self, model_code:str):
         with self._lock:
@@ -262,7 +269,6 @@ class ProviderManager:
             self._tool_model = ModelRegistery.build_toolgen_model(model_code)
             logging.info(f"Tool model değiştirildi: {model_code}")
             
-        
     def change_embed_model(self, model_code:str):
         with self._lock:
             self.registery_set.embed_model = model_code

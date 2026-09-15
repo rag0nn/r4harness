@@ -24,7 +24,7 @@
 - ~~enter, sağ sol  bindleri ekle~~
 -~~ tui token/sn gibi metriklerin eklenmesi~~
 - ~~streaming~~
-- bağımsız modellerin entegresyanunun yöntemi (cosmos gibi)
+- ~~bağımsız modellerin entegresyanunun yöntemi (cosmos gibi) # cosmos wrapper yenilenecek~~
 - farklı konfigüre model kombinasyon performans testleri
 - kombinasyonların loglarınınu tutan bir yapı
 - self improvement yapıların araştırılması

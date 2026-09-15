@@ -1,26 +1,19 @@
 {
     "registery-sets" : {
-        "assistant" : {
-            "context_model":  "ollama-qwen3.5:4b",
-            "toolgen_model" : "ollama",
-            "embed_model" : "cosmos",
+        "assistant-local" : {
+            "context_model":  "ollama-qwen3:0.6b",
+            "toolgen_model" : "ollama-qwen3:0.6b",
+            "embed_model" : "transformers-cosmos-modernbert-embed",
             "whisper_model" : "faster-whisper",
             "system_prompt" : "Sen bir yapay zeka asistanısın. İstenen çıktıları en net ve gerekli şekliyle ver, yorum katma."
         },
-        "coder" : {
-            "context_model":  "gemini",
-            "toolgen_model" : "ollama",
-            "embed_model" : "cosmos",
+        "assistant-semi-local" : {
+            "context_model":  "gemini-3.6-flash",
+            "toolgen_model" : "ollama-qwen3:0.6b",
+            "embed_model" : "gemini-embedding-2",
             "whisper_model" : "faster-whisper",
             "system_prompt" : "Sen bir yapay zeka kod programcısının. İstenen kod çıktılarını en net ve gerekli şekliyle ver."
         
-        },
-        "tiny" : {
-            "context_model":  "ollama-qwen3:0.6b",
-            "toolgen_model" : "ollama",
-            "embed_model" : "cosmos",
-            "whisper_model" : "faster-whisper",
-            "system_prompt" : "Sen bir yapay zeka asistanısın. İstenen çıktıları en net ve gerekli şekliyle ver, yorum katma."
         }
     },
     "prompts" : {

@@ -1,5 +1,6 @@
 from typing import Generator, Tuple, List, Any, Optional
 from ollama import Client, ChatResponse
+from sentence_transformers import SentenceTransformer
 import logging
 
 from .base import *
@@ -209,70 +210,33 @@ class GeminiEmbedding(BaseEmbeddingGenerationModel):
         return [float(value) for value in result.embeddings[0].values]
     
 # == Cosmos ==========================
+
 class CosmosEmbedding(BaseEmbeddingGenerationModel):
     
     @log_execution_time
-    def __init__(self, config:CosmosConfig):
+    def __init__(self, config: CosmosConfig):
         super().__init__()
-        try:
-            import onnxruntime as ort
-            from transformers import AutoTokenizer
-        except ImportError:
-            raise ImportError(
-                "CosmosEmbedding kullanabilmek için gerekli kütüphaneler eksik. "
-                "Lütfen 'pip install onnxruntime transformers' komutu ile yükleyin."
-            )
-                
         self.config = config
-        # Tokenizer'ı ana klasörden yükleme
-        self.tokenizer = AutoTokenizer.from_pretrained(self.config.tokenizer_path)
         
-        # ONNX Runtime Oturumunu bir kere başlatıp RAM'de tutma
-        self.session = ort.InferenceSession(
-            self.config.onnx_path, 
-            providers=['CPUExecutionProvider']
+        # HuggingFace modelini belirtilen cache klasörüne indirme / oradan yükleme
+        self.model = SentenceTransformer(
+            str(self.config.path)
         )
-
-    def _mean_pooling(self, model_output, attention_mask):
-        """Hidden state çıktılarını tek bir vektöre (mean pooling) dönüştürür."""
-        token_embeddings = model_output[0]  # Shape: (batch_size, seq_len, hidden_dim)
-        input_mask_expanded = np.expand_dims(attention_mask, -1).astype(float)
         
-        sum_embeddings = np.sum(token_embeddings * input_mask_expanded, axis=1)
-        sum_mask = np.clip(input_mask_expanded.sum(axis=1), a_min=1e-9, a_max=None)
-        
-        return sum_embeddings / sum_mask
+        # Max sequence length ayarı (opsiyonel)
+        if hasattr(self.config, 'vector_size'):
+            self.model.max_seq_length = self.config.vector_size
 
     def embed(self, text: str) -> list[float]:
-        # 1. Metni tokenize etme
-        inputs = self.tokenizer(
+        # encode işlemi tekil metin için (768,) boyutlu numpy array döndürür
+        embedding = self.model.encode(
             text, 
-            padding=True, 
-            truncation=True, 
-            max_length=self.config.vector_size, 
-            return_tensors="np"
+            normalize_embeddings=True, # ONNX kodunuzdaki L2 norm karşılığı,
+            truncate_dim=self.config.vector_size
         )
         
-        # ONNX giriş sözlüğünü hazırlama
-        onnx_inputs = {
-            "input_ids": inputs["input_ids"].astype(np.int64),
-            "attention_mask": inputs["attention_mask"].astype(np.int64)
-        }
-        
-        # 2. ONNX çıkarımı (Inference)
-        outputs = self.session.run(None, onnx_inputs)
-        
-        # 3. Mean Pooling ile vektör çıkarma
-        embedding = self._mean_pooling(outputs, onnx_inputs["attention_mask"])[0]
-        
-        # 4. L2 Normalizasyon (Vektör benzerlikleri için şarttır)
-        norm = np.linalg.norm(embedding)
-        if norm > 0:
-            embedding = embedding / norm
-            
-        # float32 numpy array'ini standart Python float listesine dönüştürme
         return embedding.tolist()
-    
+
 # == Voice2Text Modeller ==========================
 
 class FasterWhisper:

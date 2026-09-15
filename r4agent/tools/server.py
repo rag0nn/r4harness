@@ -42,8 +42,17 @@ mcp = MCPServer(
 import os as _os
 from ..providers import ProviderManager as _ProviderManager, RegisterySet as _RegisterySet
 
-_embed_model = _os.environ.get("R4AGENT_EMBED_MODEL", "cosmos")
-_provider = _ProviderManager(_RegisterySet(embed_model=_embed_model))
+_embed_model = _os.environ.get("R4AGENT_EMBED_MODEL", "ollama-nomic-embed")
+# RegisterySet alanlarının tümü zorunlu; bu süreç yalnızca embed_model üzerinden
+# RAG araması (local_contents) yaptığı için diğer alanlar boş bırakılır —
+# ProviderManager alanları lazy kurduğundan bunlara hiç erişilmez.
+_provider = _ProviderManager(_RegisterySet(
+    context_model="",
+    toolgen_model="",
+    embed_model=_embed_model,
+    whisper_model="",
+    system_prompt="",
+))
 @mcp.tool()
 async def get_time() -> str:
     """Mevcut şuanki zamanı döndürür.

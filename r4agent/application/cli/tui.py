@@ -101,11 +101,11 @@ class R4TUI(App):
         Binding("ctrl+b", "cancel_query", show=True, priority=True),
     ]
 
-    def __init__(self):
+    def __init__(self, chosen_registery_set = "assistant-tiny"):
         registery_sets, prompts = UsageRegisteryLoader.load()
         self.usage_registery_sets = registery_sets
         self.usage_prompts = prompts
-        self.usage_chosen_registery_set = "tiny"
+        self.usage_chosen_registery_set = chosen_registery_set
         self.stream = True
         self.handler: Handler | None = None
         self._banner_offset = 0
@@ -852,7 +852,8 @@ class R4TUI(App):
             self.prompt_area.clear()
             self.prompt_area.text = value
             self.prompt_area.focus()
-            
+            self.prompt_area.action_cursor_line_end()
+         
     def _get_providerset_suggestions(self, args: list[str]) -> list[str]:
         search_key = args[0].strip() if args else ""
         return [
