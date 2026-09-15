@@ -101,7 +101,7 @@ class R4TUI(App):
         Binding("ctrl+b", "cancel_query", show=True, priority=True),
     ]
 
-    def __init__(self, chosen_registery_set: RegisterySet | None = None):
+    def __init__(self, chosen_registery_set: RegisterySet | None = None, save_telemetry_result: bool = False):
         registery_sets, prompts = UsageRegisteryLoader.load()
         self.usage_registery_sets = registery_sets
         self.usage_prompts = prompts
@@ -122,6 +122,7 @@ class R4TUI(App):
         self.log_controller = LogController(self)
         self.session_controller: SessionController | None = None
         self._active_view = "chat"
+        self.save_telemetry_result = save_telemetry_result
         self.prompts = prompts
         
         self.current_screen_idx = 0
@@ -418,7 +419,8 @@ class R4TUI(App):
         return Handler(
             R4Agent(
                 ProviderManager(
-                    self.usage_registery_sets[self.usage_chosen_registery_set]), 
+                    self.usage_registery_sets[self.usage_chosen_registery_set], 
+                    save_telemetry_result = self.save_telemetry_result),
                 self.stream))
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
@@ -661,12 +663,12 @@ class R4TUI(App):
         self.loading_screen.display = False
         self.chat_screen.display = False
         self.farewell_screen.display = True
-        self.farewell_face_label.update(":-)")
+        self.farewell_face_label.update(":)")
         self.set_timer(0.85, self._wink)
         self.set_timer(1.5, self.exit)
 
     def _wink(self) -> None:
-        self.farewell_face_label.update(";-)")
+        self.farewell_face_label.update(";)")
 
     def save_command(self) -> None:
         if self.handler is None:

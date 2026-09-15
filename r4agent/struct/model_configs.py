@@ -33,6 +33,7 @@ class CosmosConfig(BaseConfig):
     model : str = "cosmos"
     path:Path = Path(__file__).parent.parent / "weights/cosmos-modernbert-embed"
     vector_size: int = 768
+    max_seq_length: int = 8192 # ModernBERT max_position_embeddings (token)
     
 class FasterWishperConfig(BaseConfig):
     model : str = "faster-whisper"

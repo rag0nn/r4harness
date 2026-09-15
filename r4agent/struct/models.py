@@ -212,20 +212,34 @@ class GeminiEmbedding(BaseEmbeddingGenerationModel):
 # == Cosmos ==========================
 
 class CosmosEmbedding(BaseEmbeddingGenerationModel):
-    
+
+    @staticmethod
+    def _resolve_model_path(path: Path) -> Path:
+        """HF snapshot formatında inen modellerde gerçek model dizinini bulur."""
+        if (path / "config.json").exists():
+            return path
+        refs = path / "refs" / "main"
+        snapshots = path / "snapshots"
+        if refs.exists() and snapshots.exists():
+            snapshot = snapshots / refs.read_text().strip()
+            if (snapshot / "config.json").exists():
+                return snapshot
+        raise FileNotFoundError(
+            f"Model dizininde config.json bulunamadı: {path}"
+        )
+
     @log_execution_time
     def __init__(self, config: CosmosConfig):
         super().__init__()
         self.config = config
-        
+
         # HuggingFace modelini belirtilen cache klasörüne indirme / oradan yükleme
         self.model = SentenceTransformer(
-            str(self.config.path)
+            str(self._resolve_model_path(self.config.path))
         )
         
-        # Max sequence length ayarı (opsiyonel)
-        if hasattr(self.config, 'vector_size'):
-            self.model.max_seq_length = self.config.vector_size
+        # Max sequence length ayarı; model bağlam uzunluğu (token cinsinden)
+        self.model.max_seq_length = self.config.max_seq_length
 
     def embed(self, text: str) -> list[float]:
         # encode işlemi tekil metin için (768,) boyutlu numpy array döndürür

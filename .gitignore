@@ -15,6 +15,8 @@ r4agent/rag/db/
 /r4agent/application/cli/chats/*
 r4agent/weights/*
 
+*telemetry_results.csv
+
 *temp.py
 *.log
 *.tmp

@@ -25,7 +25,8 @@
 -~~ tui token/sn gibi metriklerin eklenmesi~~
 - ~~streaming~~
 - ~~bağımsız modellerin entegresyanunun yöntemi (cosmos gibi) # cosmos wrapper yenilenecek~~
-- ctrl+a tüm areayı seçme eklenecek
+- ~~ctrl+a tüm areayı seçme eklenecek~~
 - farklı konfigüre model kombinasyon performans testleri
 - kombinasyonların loglarınınu tutan bir yapı
+- tool hataları da messagesequnce'ta işleniyor. O kaldırılsın
 - self improvement yapıların araştırılması

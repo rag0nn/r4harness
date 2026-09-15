@@ -23,7 +23,8 @@ from .rag import RAGClient, QDrantDatabase, VectorDatabaseConfig, Chunker, Chunk
 from .utils import read_env
 from pathlib import Path
 from pydantic import BaseModel
-
+import os
+import csv
 from .struct.metrics import PerformanceMetrics
 
 
@@ -162,9 +163,22 @@ class ModelTelemetry:
         self.total_output_tps += metrics.output_tps
         self.total_tool_duration_ms += metrics.tool_duration_ms
 
+    def to_dict(self):
+        return {
+            "model" : self.model,
+            "requests" : self.requests,
+            "total_prompt_tokens" : self.total_prompt_tokens,
+            "total_completion_tokens" : self.total_completion_tokens,
+            "total_ttft_ms" : self.total_ttft_ms,
+            "total_output_tps" : self.total_output_tps,
+            "total_tool_duration_ms" : self.total_tool_duration_ms,
+        }
+        
 class ProviderManager:
     
-    def __init__(self, registery_set: RegisterySet | None):
+    PATH_SAVE_TELEMETRY_RESULTS = Path(__file__).parent / "telemetry_results.csv"
+        
+    def __init__(self, registery_set: RegisterySet | None, save_telemetry_result=False):
         self._lock = threading.RLock()
         self.registery_set = registery_set or RegisterySet()
         
@@ -178,6 +192,7 @@ class ProviderManager:
 
         # Model bazlı birikimli telemetry sayaçları (provider scope)
         self.telemetry: dict[str, ModelTelemetry] = {}
+        self.save_telemetry_result: bool = save_telemetry_result
 
     @property
     def system_prompt(self):
@@ -251,7 +266,28 @@ class ProviderManager:
                 f"toplam token: {usage.total_tokens}, "
                 f"ort. TTFT: {usage.avg_ttft_ms}ms, ort. TPS: {usage.avg_output_tps}"
             )
-        
+
+            if self.save_telemetry_result:
+                telemetry_result_dict = {
+                    "context_model": self.registery_set.context_model,
+                    "toolgen_model": self.registery_set.toolgen_model,
+                    "embed_model": self.registery_set.embed_model,
+                    "whisper_model": self.registery_set.whisper_model,
+                    "system_prompt": self.registery_set.system_prompt,
+                }
+
+                telemetry_result_dict.update(usage.to_dict())
+                # Dosyanın daha önceden var olup olmadığını kontrol et
+                file_exists = os.path.exists(self.PATH_SAVE_TELEMETRY_RESULTS)
+
+                with open(self.PATH_SAVE_TELEMETRY_RESULTS, "a", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=telemetry_result_dict.keys())
+                    
+                    # Dosya ilk defa oluşturuluyorsa sütun isimlerini (header) yaz
+                    if not file_exists:
+                        writer.writeheader()
+                        
+                    writer.writerow(telemetry_result_dict)
     def change_system_prompt(self, text:str):
         with self._lock:
             self.registery_set.system_prompt = text
