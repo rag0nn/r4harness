@@ -95,20 +95,23 @@ async def fetch(url: str) -> str:
         
 @mcp.tool()
 async def remote_blog_contents(url:str):
-    """
-        Uzak sunucuda içeriklerim var, bu tool blogumdan içerikleri görüntülemek için kullanılır. 
-        Bu içerikler notlar, projeler ve gönderiler olarak görüntülenebilir.
-        İçerikler gerekli url kombinasyonu ile elde edilebilir. Bu kombinasyonlar kullanılarak mevcut not içeriği,
-        notların listesi, proje içeriği, projelerin listesi, gönderi içeriği, gönderilerin listesi görüntülenebilir.
-        Anahter Kelimeler: Blog, BLOG, blog
-        Kombinasyonlar:
-            root (ana sayfa) : https://tarhannes.com.tr
-            notes (notların listelendiği endpoint) : /notes
-            projects (projelerin listelendiği endpoint): /projects
-            posts (kapsamlı yazıların listelendiği endpoint): /posts
-            {slug} (içerik, slug benzersiz içerik değişkeni, listelerden görüntülenebilir): /{slug}
-        Sorgular:
-            page (sayfaları görüntülemek, {X} sayfa sayısı): ?q=&page={X}    
+    """Uzak sunucudaki blog içeriklerini (notlar, projeler, gönderiler) görüntülemek için kullanılır.
+
+    İstenen içerik yalnızca `url` parametresiyle alınır; başka parametre yoktur.
+    `url`'e, ana adres (https://tarhannes.com.tr) ile uç noktalardan birinin birleşimi olan TAM adres verilmelidir:
+
+        Ana sayfa                : https://tarhannes.com.tr
+        Notların listesi         : https://tarhannes.com.tr/notes
+        Projelerin listesi       : https://tarhannes.com.tr/projects
+        Gönderilerin listesi     : https://tarhannes.com.tr/posts
+        Tek bir içerik           : https://tarhannes.com.tr/{slug}  (slug, listelerde geçen benzersiz içerik değişkenidir)
+        Sayfalama                : https://tarhannes.com.tr/{uç nokta}?q=&page={X}  (X sayfa numarasıdır)
+
+    Örnekler:
+        url='https://tarhannes.com.tr'
+        url='https://tarhannes.com.tr/notes?q=&page=2'
+
+    Anahtar Kelimeler: Blog, BLOG, blog
     """
     async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
         try:

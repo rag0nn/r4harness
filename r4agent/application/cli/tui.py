@@ -9,7 +9,7 @@ from textual.widgets.option_list import Option
 from textual.worker import Worker, WorkerState
 
 from r4agent import Message, R4Agent
-from r4agent.providers import ModelRegistery, ProviderManager, UsageRegisteryLoader
+from r4agent.providers import ModelRegistery, ProviderManager, RegisterySet, UsageRegisteryLoader
 from r4agent.struct.base import Roles
 from r4agent.struct.metrics import PerformanceMetrics
 
@@ -101,11 +101,11 @@ class R4TUI(App):
         Binding("ctrl+b", "cancel_query", show=True, priority=True),
     ]
 
-    def __init__(self, chosen_registery_set = "assistant-tiny"):
+    def __init__(self, chosen_registery_set: RegisterySet | None = None):
         registery_sets, prompts = UsageRegisteryLoader.load()
         self.usage_registery_sets = registery_sets
         self.usage_prompts = prompts
-        self.usage_chosen_registery_set = chosen_registery_set
+        self.usage_chosen_registery_set = chosen_registery_set if chosen_registery_set is not None else list(registery_sets.keys())[0]
         self.stream = True
         self.handler: Handler | None = None
         self._banner_offset = 0
@@ -128,8 +128,8 @@ class R4TUI(App):
 
         # Çok Aşamalı Komut Ağacı (COMMAND TREE)
         self.command_tree: dict[str, CommandNode] = {
-            "/reset": {
-                "handler": lambda app, args: app.reset_command(),
+            "/clear": {
+                "handler": lambda app, args: app.clear_command(),
             },
             "/save": {
                 "handler": lambda app, args: app.save_command(),
@@ -645,7 +645,7 @@ class R4TUI(App):
             return
         sequence.append(Message(role=Roles.assistant, content=content or ""))
 
-    def reset_command(self) -> None:
+    def clear_command(self) -> None:
         if self.handler is None:
             return
         self.session_controller.reset()

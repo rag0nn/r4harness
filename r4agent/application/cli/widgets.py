@@ -27,6 +27,12 @@ class PromptTextArea(TextArea):
             event.prevent_default()
             return
 
+        if event.key == "ctrl+a":
+            event.stop()
+            event.prevent_default()
+            self.select_all()
+            return
+
         if event.key == "shift+enter":
             event.stop()
             event.prevent_default()
