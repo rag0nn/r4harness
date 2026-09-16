@@ -16,8 +16,8 @@
         
         },
         "assistant-test" : {
-            "context_model":  "nemotron-3-nano:4b",
-            "toolgen_model" : "nemotron-3-nano:4b",
+            "context_model":  "ollama-nemotron-3-nano:4b",
+            "toolgen_model" : "ollama-nemotron-3-nano:4b",
             "embed_model" : "transformers-cosmos-modernbert-embed",
             "whisper_model" : "faster-whisper",
             "system_prompt" : "Sen bir yapay zeka kod programcısının. İstenen kod çıktılarını en net ve gerekli şekliyle ver."

@@ -33,4 +33,5 @@
 - ~~düşük-orta parametreleri generation modelleri~~
 - ~~mcp izinleri?~~
 - rag ve blog toollarının tam takır geliştirilmesi
+- context_size metriği gerçekle uyumlu değil sanırım
 - self improvement yapıların araştırılması

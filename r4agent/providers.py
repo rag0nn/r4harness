@@ -53,7 +53,7 @@ class ModelRegistery:
     }
     toolgen_models: dict[str, tuple[type[BaseToolGenerationModel], type[BaseModel]]] = {
         "ollama-nemotron-3-nano:4b": (OllamaToolGenModel, OllamaConfig(
-            model = "nemotron-3-nano:4"
+            model = "nemotron-3-nano:4b"
             )),
         "ollama-qwen3.5:2b": (OllamaToolGenModel, OllamaConfig(
             model = "qwen3.5:2b")),
