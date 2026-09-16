@@ -12,7 +12,7 @@ type gemini_think_level = Literal["minimal", "low", "medium", "high"]
 # == Childs ==========================
 
 class OllamaConfig(BaseConfig):
-    model : str = "qwen3.5:4b"
+    model : str
     think : bool = False
     context_window : int = 8192
 

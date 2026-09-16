@@ -26,7 +26,11 @@
 - ~~streaming~~
 - ~~bağımsız modellerin entegresyanunun yöntemi (cosmos gibi) # cosmos wrapper yenilenecek~~
 - ~~ctrl+a tüm areayı seçme eklenecek~~
-- farklı konfigüre model kombinasyon performans testleri
-- kombinasyonların loglarınınu tutan bir yapı
-- tool hataları da messagesequnce'ta işleniyor. O kaldırılsın
+- ~~farklı konfigüre model kombinasyon performans testleri~~
+- ~~kombinasyonların loglarınınu tutan bir yapı~~
+- ~~tool hataları da messagesequnce'ta işleniyor. O kaldırılsın~~
+- ~~system prompt changete sıkıntı var.~~
+- ~~düşük-orta parametreleri generation modelleri~~
+- ~~mcp izinleri?~~
+- rag ve blog toollarının tam takır geliştirilmesi
 - self improvement yapıların araştırılması

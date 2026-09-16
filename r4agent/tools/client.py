@@ -11,6 +11,64 @@ from mcp.client.stdio import stdio_client
 
 import logging
 
+from enum import Enum
+from typing import Callable
+
+class AgentMode(Enum):
+    YOLO = "yolo"
+    INTERACTIVE = "interactive"
+    STRICT = "strict"
+
+class SecurityLevel(Enum):
+    SAFE = "safe"
+    DANGEROUS = "dangerous"
+
+TOOL_SECURITY_MAP = {
+    "get_time" : SecurityLevel.SAFE,
+    "find_file": SecurityLevel.SAFE,
+    "read_code": SecurityLevel.SAFE,
+    "local_contents": SecurityLevel.SAFE,
+    "fetch": SecurityLevel.DANGEROUS,
+    "remote_blog_contents": SecurityLevel.DANGEROUS,
+}
+
+class ToolApprovalManager:
+    """Tool çağrıları için kullanıcı onay politikası.
+
+    "Nasıl sorulacağı" dışavurumcudur: TUI/Web arayüzü kendi onay akışını
+    `request_handler` ile enjekte eder; yoksa konsoldan soran fallback kullanılır.
+    """
+
+    def __init__(self,
+                 mode: AgentMode = AgentMode.STRICT,
+                 request_handler: Callable[[str, dict], bool] | None = None):
+        self.mode = mode
+        self.request_handler = request_handler or self._default_request
+
+    def authorize_execution(self, tool_name: str, args: dict) -> bool:
+        """Tool'un çalıştırılıp çalıştırılamayacağına karar verir."""
+        if self.mode == AgentMode.YOLO:
+            return True
+
+        if self.mode == AgentMode.STRICT:
+            return self.request_handler(tool_name, args)
+
+        # INTERACTIVE Mode: Yalnızca DANGEROUS toolları sor
+        risk_level = TOOL_SECURITY_MAP.get(tool_name, SecurityLevel.DANGEROUS)
+        if risk_level == SecurityLevel.SAFE:
+            return True
+        return self.request_handler(tool_name, args)
+
+    @staticmethod
+    def _default_request(tool_name: str, arguments: dict) -> bool:
+        """TUI dışı (headless) kullanım için fallback: konsoldan onay ister."""
+        answer = input(
+            f"Agent '{tool_name}' aracını çalıştırmak istiyor\n"
+            f"Parametreler: {arguments}\n"
+            f"Çalıştırılsın mı? [y/N] "
+        )
+        return answer.strip().lower() in {"y", "yes"}
+            
 class MCPClient:
     _instance: "MCPClient | None" = None
     _lock = threading.Lock()
@@ -130,7 +188,7 @@ class MCPClient:
         """MCP sunucusundaki kullanılabilir tool şemasını getirir."""
         return self._run(self._session.list_tools())
 
-    def call_tool(self, name, params: dict | None = None):
+    def call_tool(self, name, params: dict | None = None) -> tuple[bool, str]:
         """Bir MCP tool çağrısını çalıştırır ve metin sonucuna dönüştürür."""
         result = self._run(self._session.call_tool(name, arguments=params or {}))
         if result.is_error:
@@ -138,16 +196,16 @@ class MCPClient:
                 getattr(block, "text", str(block)) if not isinstance(block, str) else block
                 for block in result.content
             )
-            logging.error(f"Tool hatası [{name}]: {error_text}")
-            return f"Tool Hatası ({name}): {error_text}"
+            logging.error(f"Tool çağrısında hata => [{name}]: {error_text}")
+            return (False, f"{name}({params}) Tool çağrısında hata, istenen gerekli veriye ulaşılamadı.")
         text_parts = [
             getattr(block, "text", str(block)) if not isinstance(block, str) else block
             for block in result.content
         ]
         tool_text = "\n".join(text_parts)
 
-        logging.info(f"[MCP tool result for '{name}']:\n{tool_text[:20]}...")
-        return tool_text
+        logging.info(f"MCP Tool çağrısı başarılı => {name}({params})")
+        return (True, tool_text)
 
     def get_insturactions(self):
         """MCP oturumunun model promptuna eklenecek talimatlarını döndürür."""

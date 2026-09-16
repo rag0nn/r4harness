@@ -1,5 +1,5 @@
 from .struct import *
-from .tools.client import MCPClient
+from .tools.client import MCPClient, ToolApprovalManager
 from .providers import ProviderManager, RegisterySet
 from .utils import log_execution_time
 
@@ -12,10 +12,12 @@ class R4Agent:
     MAX_TOOL_ROUNDS = 5
 
     def __init__(self,
+            approval: ToolApprovalManager,
             provider: ProviderManager | None = None,
             stream : bool = False, ):
         self.stream = stream
         self.provider = provider or ProviderManager(RegisterySet())
+        self.approval = approval
         self._build()
         
     def change_provider_manager(self, provider: ProviderManager):
@@ -47,9 +49,19 @@ class R4Agent:
 
             if not name:
                 continue
-            logging.info(f"Tool Çağrılıyor: {name}  args: {args}")
+
+            if not self.approval.authorize_execution(name, args or {}):
+                logging.info(f"Kullanıcı '{name}' aracını reddetti.")
+                self.message_sequnce.add(Message(
+                    role=Roles.tool,
+                    content=f"Kullanıcı '{name}' aracını çalıştırmayı reddetti; çağrı yapılmadı.",
+                    metrics=PerformanceMetrics(tool_duration_ms=0.0),
+                ))
+                continue
+
+            logging.info(f"Tool çağrılıyor => {name}({args})")
             tool_start = perf_counter()
-            result_text = self.mcp_client.call_tool(name, args or {})
+            success, result_text = self.mcp_client.call_tool(name, args or {})
             call_duration_ms = (perf_counter() - tool_start) * 1000
             self.message_sequnce.add(Message(
                 role=Roles.tool,

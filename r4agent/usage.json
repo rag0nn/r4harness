@@ -5,7 +5,7 @@
             "toolgen_model" : "ollama-qwen3:0.6b",
             "embed_model" : "transformers-cosmos-modernbert-embed",
             "whisper_model" : "faster-whisper",
-            "system_prompt" : "Sen bir yapay zeka asistanısın. İstenen çıktıları en net ve gerekli şekliyle ver, yorum katma."
+            "system_prompt" : "Sen bir yapay zeka asistanısın. İstenen çıktıları en net ve gerekli şekliyle ver, yorum katma. Çoğunlukla list, table gibi structered cevaplar oluştur. Başarısız tool call'lar sebebiyle istenen bilgi verilmemişse, kullanıcıyı 'gerekli tool verisi olmaması sebebiyle cevap veremiyorum' diye cevap ver."
         },
         "assistant-semi-local" : {
             "context_model":  "gemini-3.6-flash",
@@ -14,6 +14,14 @@
             "whisper_model" : "faster-whisper",
             "system_prompt" : "Sen bir yapay zeka kod programcısının. İstenen kod çıktılarını en net ve gerekli şekliyle ver."
         
+        },
+        "assistant-test" : {
+            "context_model":  "nemotron-3-nano:4b",
+            "toolgen_model" : "nemotron-3-nano:4b",
+            "embed_model" : "transformers-cosmos-modernbert-embed",
+            "whisper_model" : "faster-whisper",
+            "system_prompt" : "Sen bir yapay zeka kod programcısının. İstenen kod çıktılarını en net ve gerekli şekliyle ver."
+     
         }
     },
     "prompts" : {

@@ -200,3 +200,43 @@ Header {
     min-height: 1;
     margin-top: 1;
 }
+
+ApprovalScreen {
+    align: center middle;
+    background: rgba(0, 0, 0, 0.7);
+}
+
+#approval-dialog {
+    width: 60%;
+    height: auto;
+    padding: 1 2;
+    border: round $warning;
+    background: $surface;
+    color: $text;
+}
+
+.approval-title {
+    text-style: bold;
+    color: $warning;
+}
+
+.approval-detail {
+    height: auto;
+    margin-top: 1;
+}
+
+#approval-actions {
+    height: auto;
+    layout: horizontal;
+    align-horizontal: center;
+    padding-top: 1;
+}
+
+#approve-button {
+    margin-right: 1;
+}
+
+#approve-button,
+#deny-button {
+    width: 12;
+}

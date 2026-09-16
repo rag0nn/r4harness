@@ -1,14 +1,43 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from textual.events import Key
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import Label, Markdown, Static, TextArea
+from textual.screen import ModalScreen
+from textual.widgets import Button, Label, Markdown, Static, TextArea
 
 from r4agent import Message
 from r4agent.struct.base import Roles
+
+
+class ApprovalScreen(ModalScreen[bool]):
+    """Tek tool çağrısı için onay/red popup'ı (modal)."""
+
+    def __init__(self, tool_name: str, args: dict) -> None:
+        self.tool_name = tool_name
+        self.args = args
+        super().__init__()
+
+    def compose(self) -> ComposeResult:
+        with Container(id="approval-dialog"):
+            yield Label("Tool İzni Gerekli", classes="approval-title")
+            yield Static(
+                f"{self.tool_name}({self.args})",
+                classes="approval-detail",
+                markup=False,
+            )
+            with Container(id="approval-actions"):
+                yield Button("Çalıştır", id="approve-button", variant="success")
+                yield Button("Reddet", id="deny-button", variant="error")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "approve-button":
+            self.dismiss(True)
+        elif event.button.id == "deny-button":
+            self.dismiss(False)
 
 
 class PromptTextArea(TextArea):
@@ -53,6 +82,7 @@ class MessageBlock(Container):
     def __init__(self, message: Message, tool_call=None) -> None:
         self.message = message
         self.tool_call = tool_call
+        self._streamed_len = len(message.content or "")
         super().__init__(classes=f"message-block {message.role}")
 
     @staticmethod
@@ -110,11 +140,34 @@ class MessageBlock(Container):
             yield Markdown(self.message.content or "", classes="message-content")
 
     def update_content(self, content: str) -> None:
-        """Stream sırasında mesaj bloğunun içeriğini yerinde günceller."""
+        """Stream sırasında mesaj bloğunun içeriğini yerinde günceller.
+
+        Komple içeriği her parçada yeniden `update()` ile basmak yerine yalnızca
+        yeni gelen kısım `append()` ile eklenir; böylece Textual mevcut blokları
+        kaldırıp yeniden kurmaz ve stream sırasında tıklamada stale widget'a
+        denk gelinmez (ebeveynsiz bloğa `.region` erişimi hatası).
+        """
         if self.message.role == Roles.tool or not self.is_mounted:
             return
         self.message.content = content
-        self.query_one(Markdown).update(content or "")
+        delta = content[self._streamed_len:]
+        if not delta:
+            return
+        self._streamed_len = len(content)
+        markdown = self.query_one(Markdown)
+
+        async def append_live() -> None:
+            try:
+                await markdown.append(delta)
+            except Exception:
+                # Blok update_log sırasında unmount edilirken append güvenle düşer.
+                return
+
+        try:
+            asyncio.create_task(append_live())
+        except RuntimeError:
+            # Uygulama kapanırken loop yoksa stream güncellemesi atlanır.
+            return
 
 
 class ToolChain(Container):

@@ -33,18 +33,39 @@ read_env(Path(__file__).parent / ".env")
 class ModelRegistery:
     context_models: dict[str, tuple[type[BaseContextGenerationModel], type[BaseModel]]] = {
         "gemini-3.6-flash": (GeminiGenModel, GeminiGenConfig(
-            model="gemini-3.6-flash"
-            )),
-        "ollama-qwen3.5:4b": (OllamaGenModel, OllamaConfig(think=True)),
+            model="gemini-3.6-flash")),
+        "ollama-nemotron-3-nano:4b": (OllamaGenModel, OllamaConfig(
+            model="nemotron-3-nano:4b",
+            think=True)),
+        "ollama-qwen3.5:2b": (OllamaGenModel, OllamaConfig(
+            model="qwen3.5:2",
+            think=False)),
         "ollama-qwen3:0.6b": (OllamaGenModel, OllamaConfig(
             model="qwen3:0.6b",
             think=True)),
+        "ollama-qwen2.5-coder:3b": (OllamaGenModel, OllamaConfig(
+            model="qwen2.5-coder:3b",
+            think=False)),
+        "ollama-gemma3:1b" : (OllamaGenModel, OllamaConfig(
+            model="gemma3:1b",
+            think=False # Think support yok
+        )),
     }
     toolgen_models: dict[str, tuple[type[BaseToolGenerationModel], type[BaseModel]]] = {
-        "ollama-qwen3.5:4b": (OllamaToolGenModel, OllamaConfig()),
+        "ollama-nemotron-3-nano:4b": (OllamaToolGenModel, OllamaConfig(
+            model = "nemotron-3-nano:4"
+            )),
+        "ollama-qwen3.5:2b": (OllamaToolGenModel, OllamaConfig(
+            model = "qwen3.5:2b")),
         "ollama-qwen3:0.6b": (OllamaToolGenModel, OllamaConfig(
             model="qwen3:0.6b",
             )),
+        "ollama-functiongemma" : (OllamaToolGenModel, OllamaConfig(
+            model="functiongemma",
+        )),
+        "ollama-qwen2.5-coder:3b" : (OllamaToolGenModel, OllamaConfig(
+            model="qwen2.5-coder:3b",
+        ))
     }
     embed_models: dict[str, tuple[type[BaseEmbeddingGenerationModel], type[BaseModel]]] = {
         "gemini-embedding-2": (GeminiEmbedding, GeminiEmbedConfig()),

@@ -4,6 +4,7 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, VerticalScroll
+from textual.markup import escape
 from textual.widgets import Button, Header, Label, LoadingIndicator, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 from textual.worker import Worker, WorkerState
@@ -12,8 +13,10 @@ from r4agent import Message, R4Agent
 from r4agent.providers import ModelRegistery, ProviderManager, RegisterySet, UsageRegisteryLoader
 from r4agent.struct.base import Roles
 from r4agent.struct.metrics import PerformanceMetrics
+from r4agent.tools.client import AgentMode, ToolApprovalManager
 
 import os
+import threading
 
 from .command_parser import CommandParser
 from .handler import Handler
@@ -21,7 +24,7 @@ from .log_controller import LogController
 from .message_renderer import render_messages
 from .query_controller import QueryController
 from .session_controller import SessionController
-from .widgets import MessageBlock, ModelBanner, PromptTextArea
+from .widgets import ApprovalScreen, MessageBlock, ModelBanner, PromptTextArea
 
 
 class CommandNode(TypedDict, total=False):
@@ -164,7 +167,15 @@ class R4TUI(App):
             },
             "/providerset" : {
                 "arg_provider" : lambda app, args: app._get_providerset_suggestions(args),
-                "handler" : lambda app, args : app._handle_providerset_command(" ".join(args)),   
+                "handler" : lambda app, args : app._handle_providerset_command(" ".join(args)),
+            },
+            "/approval" : {
+                "arg_provider" : lambda app, args: [
+                    f"/approval {mode.value}"
+                    for mode in AgentMode
+                    if mode.value.startswith(args[0] if args else "")
+                ],
+                "handler" : lambda app, args : app._handle_approval_command(args[0] if args else ""),
             },
             "/change": {
                 # 2 Aşamalı & 3 Aşamalı Hibrit Yapı
@@ -193,9 +204,16 @@ class R4TUI(App):
                         ],
                         "handler": lambda app, args: app.change_provider(f"toolgen_model {args[0]}") if args else None,
                     },
-                    "system_prompt" : {
-                        "handler": lambda app, args: app.change_provider(f"system_prompt {args[0]}")
-                    }
+                    "system_prompt": {
+                        "arg_provider": lambda app, args: [
+                            f"/change system_prompt {name}"
+                            for name in app.usage_registery_sets
+                            if name.startswith(args[0] if args else "")
+                        ],
+                        "handler": lambda app, args: app.change_provider(
+                            f"system_prompt {' '.join(args)}"
+                        ) if args else None,
+                    },
                     # # 3 Aşamalı Örnek: /change provider context_model <model>
                     # "provider": {
                     #     "subcommands": {
@@ -416,12 +434,47 @@ class R4TUI(App):
         )
 
     def _initialize_agent(self) -> Handler:
+        approval = ToolApprovalManager(
+            mode=AgentMode.INTERACTIVE,
+            request_handler=self._request_approval,
+        )
         return Handler(
             R4Agent(
-                ProviderManager(
-                    self.usage_registery_sets[self.usage_chosen_registery_set], 
-                    save_telemetry_result = self.save_telemetry_result),
-                self.stream))
+                provider=ProviderManager(
+                    self.usage_registery_sets[self.usage_chosen_registery_set],
+                    save_telemetry_result=self.save_telemetry_result,
+                ),
+                approval=approval,
+                stream=self.stream,
+            )
+        )
+
+    def _request_approval(self, tool_name: str, args: dict) -> bool:
+        """Worker thread'de çalışır; main thread'e popup gönderir, kararı bekler."""
+        state = {"approved": False}
+        event = threading.Event()
+        try:
+            self.call_from_thread(
+                self._show_approval_screen, tool_name, args, state, event
+            )
+        except RuntimeError:
+            return False
+        event.wait()
+        return state["approved"]
+
+    def _show_approval_screen(
+        self,
+        tool_name: str,
+        args: dict,
+        state: dict,
+        event: threading.Event,
+    ) -> None:
+        """Main thread'de popup'ı açar; dismiss sonucuyla worker'ı uyandırır."""
+        def on_result(approved: bool | None) -> None:
+            state["approved"] = bool(approved)
+            event.set()
+
+        self.push_screen(ApprovalScreen(tool_name, args), callback=on_result)
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.name == "agent-init":
@@ -441,7 +494,7 @@ class R4TUI(App):
                 self._render_logs()
             elif event.state is WorkerState.ERROR:
                 loader.display = False
-                status.update(f"Başlatma başarısız: {event.worker.error}")
+                status.update(f"Başlatma başarısız: {escape(str(event.worker.error))}")
             return
 
         if event.worker.name == "load-chat":
@@ -451,7 +504,7 @@ class R4TUI(App):
                 self.query_status_label.update("Sohbet yüklendi")
                 self.update_log()
             elif event.state is WorkerState.ERROR:
-                self.query_status_label.update(f"Yükleme hatası: {event.worker.error}")
+                self.query_status_label.update(f"Yükleme hatası: {escape(str(event.worker.error))}")
             self.query_status_label.display = True
             return
 
@@ -463,7 +516,7 @@ class R4TUI(App):
                 self.query_status_label.update("Provider değiştirildi")
                 self.update_log()
             elif event.state is WorkerState.ERROR:
-                self.query_status_label.update(f"Provider değiştirme hatası: {event.worker.error}")
+                self.query_status_label.update(f"Provider değiştirme hatası: {escape(str(event.worker.error))}")
             self.query_status_label.display = True
             return
 
@@ -494,7 +547,7 @@ class R4TUI(App):
                 self._update_model_banner()
                 self.query_status_label.update("Döküman başarıyla eklendi")
             elif event.state is WorkerState.ERROR:
-                self.query_status_label.update(f"Döküman eklerken hata: {event.worker.error}")
+                self.query_status_label.update(f"Döküman eklerken hata: {escape(str(event.worker.error))}")
             self.query_status_label.display = True
             return
 
@@ -566,7 +619,7 @@ class R4TUI(App):
             self.query_controller.finish()
             self._live_metrics = None
             self._update_model_banner()
-            self.query_status_label.update(f"Sorgu hatası: {event.worker.error}")
+            self.query_status_label.update(f"Sorgu hatası: {escape(str(event.worker.error))}")
             self.query_status_label.display = True
 
     def _build_query_prompt(self, prompt: str) -> str:
@@ -689,7 +742,7 @@ class R4TUI(App):
             None,
         )
         if chat_path is None:
-            self.query_status_label.update(f"Sohbet bulunamadı: {chat_name}")
+            self.query_status_label.update(f"Sohbet bulunamadı: {escape(chat_name)}")
             self.query_status_label.display = True
             return
 
@@ -798,7 +851,7 @@ class R4TUI(App):
         return True
 
     def change_provider(self, change: str) -> None:
-        parts = change.split()
+        parts = change.split(maxsplit=1)
         if len(parts) != 2:
             return
 
@@ -813,11 +866,22 @@ class R4TUI(App):
         if setter is None:
             return
 
+        if field == "system_prompt":
+            registery_set = self.usage_registery_sets.get(key)
+            if registery_set is not None:
+                # Kayıtlı set adı seçilmişse onun prompt metnini kullan.
+                key = registery_set.system_prompt
+
         promptarea = self.prompt_area
         promptarea.clear()
         promptarea.disabled = True
         self.hide_command_list()
-        self.query_status_label.update("Provider yeniden kuruluyor...")
+        if field == "system_prompt":
+            self.query_status_label.update(
+                "System prompt güncellendi (aktif olması için /clear)"
+            )
+        else:
+            self.query_status_label.update("Provider yeniden kuruluyor...")
         self.query_status_label.display = True
 
         def rebuild() -> None:
@@ -833,7 +897,9 @@ class R4TUI(App):
         self._update_model_banner()
         if field == "system_prompt":
             self.update_log()
-           
+            status = self.query_status_label
+            self.set_timer(1.5, lambda: setattr(status, "display", False))
+
     def _get_prompt_suggestions(self, args: list[str]) -> list[str]:
         # args içerisinden sadece yazılan son kelimeyi al
         search_key = args[0].strip() if args else ""
@@ -872,8 +938,26 @@ class R4TUI(App):
         )
         self._update_model_banner()
         self.prompt_area.clear()
-        self.prompt_area.focus()     
-        
+        self.prompt_area.focus()
+
+    def _handle_approval_command(self, mode_text: str) -> None:
+        if self.handler is None:
+            return
+        try:
+            mode = AgentMode(mode_text)
+        except ValueError:
+            self.query_status_label.update(
+                "Kullanım: /approval strict | interactive | yolo"
+            )
+            self.query_status_label.display = True
+            return
+        self.handler.r4.approval.mode = mode
+        self.query_status_label.update(f"Approval modu: {mode.value}")
+        self.query_status_label.display = True
+        self.prompt_area.clear()
+        self.prompt_area.focus()
+        self.hide_command_list()
+
     @on(TextArea.Changed, "#prompt-area")
     def on_prompt_changed(self, event: TextArea.Changed) -> None:
         text = event.text_area.text

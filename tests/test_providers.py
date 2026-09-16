@@ -59,3 +59,37 @@ class TestProviderManager:
         
     def test_reset(self, manager: ProviderManager):        
         manager.reset()
+
+# == Model Kayıt Defteri (Registry) ==========================
+class TestModelRegistryWiring:
+
+    def test_toolgen_models_are_tool_generation_classes(self):
+        """Tool-seçim kayıtları tool üretim sınıfı olmalı.
+
+        'phi4-mini:latest' önceden context sınıfına (OllamaGenModel) bağlıydı;
+        master tool döngüsü tool listesini ikinci konumsal argüman olarak
+        geçtiğinden bu değer stream parametresi sayılıp Ollama ChatRequest
+        doğrulama hatasına (stream << ListToolsResult) yol açıyordu.
+        """
+        from r4agent.struct.models import BaseToolGenerationModel, OllamaToolGenModel
+
+        assert ModelRegistery.toolgen_models["phi4-mini:latest"][0] is OllamaToolGenModel
+        for key, (model_cls, _) in ModelRegistery.toolgen_models.items():
+            assert issubclass(model_cls, BaseToolGenerationModel), (
+                f"toolgen_model '{key}' tool üretim sınıfı değil: {model_cls.__name__}"
+            )
+
+    def test_context_models_are_context_generation_classes(self):
+        """Context kayıtları bağlam üretim sınıfı olmalı.
+
+        'gemma3:1b' önceden tool sınıfına (OllamaToolGenModel) bağlıydı;
+        master send döngüsü context_model'e stream parametresi geçtiğinden
+        TypeError: ... got an unexpected keyword argument 'stream' oluşuyordu.
+        """
+        from r4agent.struct.models import BaseContextGenerationModel, OllamaGenModel
+
+        assert ModelRegistery.context_models["gemma3:1b"][0] is OllamaGenModel
+        for key, (model_cls, _) in ModelRegistery.context_models.items():
+            assert issubclass(model_cls, BaseContextGenerationModel), (
+                f"context_model '{key}' bağlam üretim sınıfı değil: {model_cls.__name__}"
+            )
